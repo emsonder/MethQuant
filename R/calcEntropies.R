@@ -31,7 +31,7 @@ widthEntropy <- function(metTable, cellIds, aggregateOn="bin"){
     setnames(cellTable, cellId, "rate")
     
     # Make Sure table is ordered
-    setorder(cellTable, chr, pos) 
+    setorder(cellTable, chr, pos)
     
     # Calculate Sample Entropy along width axis & aggregate
     widthEntropies[[cellId]] <- cellTable[,.(width_SampleEn=sampleEn(round(rate), 2, 0.2),
@@ -66,8 +66,10 @@ heightEntropy <- function(metTable, cellIds, aggregateOn="bin"){
                        value.name="rate")
   
   # Calculate Shannon Entropy per position 
-  metTableLong[complete.cases(rate), height_entropy:=shannonEnDiscrete(round(rate)), by=pos]
-  metTableLong[complete.cases(rate), nCpGs:=.N, by=pos]
+  metTableLong[complete.cases(rate), 
+               height_entropy:=shannonEnDiscrete(round(rate)), 
+               by=list(chr,pos)]
+  metTableLong[complete.cases(rate), nCpGs:=.N, by=list(chr,pos)]
   
   # Aggregate
   heightEntropies <- metTableLong[,.(height_entropy=mean(height_entropy, na.rm=T),
