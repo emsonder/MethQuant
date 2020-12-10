@@ -30,6 +30,9 @@ widthEntropy <- function(metTable, cellIds, aggregateOn="bin"){
     cellTable <- metTable[complete.cases(metTable[,..cellId]),..columns]
     setnames(cellTable, cellId, "rate")
     
+    # Make Sure table is ordered
+    setorder(cellTable, chr, pos) 
+    
     # Calculate Sample Entropy along width axis & aggregate
     widthEntropies[[cellId]] <- cellTable[,.(width_SampleEn=sampleEn(round(rate), 2, 0.2),
                                              nCpGs_width=.N,
