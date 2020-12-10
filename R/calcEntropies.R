@@ -5,7 +5,7 @@ library(data.table)
 library(Rcpp)
 
 first <- data.table::first
-sourceCpp("../C++/entropies.cpp")
+sourceCpp("./C++/entropies.cpp")
 
 
 #'@title widthEntropy
@@ -33,6 +33,7 @@ widthEntropy <- function(metTable, cellIds, aggregateOn="bin"){
     # Calculate Sample Entropy along width axis & aggregate
     widthEntropies[[cellId]] <- cellTable[,.(width_SampleEn=sampleEn(round(rate), 2, 0.2),
                                              nCpGs_width=.N,
+                                             methylation_level_cell=mean(rate),
                                              mean_dis_CpGs=(last(pos)-first(pos))/.N,
                                              median_pos=as.integer(median(pos))),
                                           by=aggregateOn]
@@ -68,6 +69,7 @@ heightEntropy <- function(metTable, cellIds, aggregateOn="bin"){
   # Aggregate
   heightEntropies <- metTableLong[,.(height_entropy=mean(height_entropy, na.rm=T),
                                      mean_nCpGs_height=mean(nCpGs, na.rm=T),
+                                     methylation_level_bulk=mean(rate, na.rm=T),
                                      median_pos=as.integer(median(pos))), 
                                      by=aggregateOn]
   
