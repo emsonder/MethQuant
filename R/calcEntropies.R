@@ -7,31 +7,42 @@ library(Rcpp)
 first <- data.table::first
 sourceCpp("./C++/entropies.cpp")
 
-
 #'@title widthEntropy
 #'@description Calculates Sample Entropies along methylation patterns
 #'of genomic subsequences of single cells (width axis).
 #'Sample Entropy: Richman and Moorman, 2000
 #'https://journals.physiology.org/doi/full/10.1152/ajpheart.2000.278.6.h2039
-#'@param metTable Wide data.table of methylation rates, 
+#'@param dataTable Either wide data.table of methylation rates (byCell=F) or
+#' or list with two wide data.tables, i.e. a methylation rates table and a table 
+#' with cell-specific bins (byCell=T).
 #'dimensions: genome coordinates (pos, chr) vs cell. 
 #'@param cellIds unique Identifiers of single cells
-#'@param aggregateOn Column of metTable defining the genomic subsequences to 
+#'@param binByCell Cell-specific binning
+#'@param nCpGsBin Number of CpGs per Bin
+#'@param aggregateOn Column of table defining the genomic subsequences to 
 #'calculate the entropy scores on. 
-#'@return data.table with Sample Entropies per genomic subsequence and cell
-widthEntropy <- function(metTable, cellIds, aggregateOn="bin"){
-
+#'@return data.table with Entropies per genomic subsequence and cell
+widthEntropy <- function(metTable, cellIds, 
+                         binByCell=T, nCpGsBin=8,
+                         aggregateOn="bin"){
   # Loop proved to be faster than conversion to long
   widthEntropies <- list()
   for(cellId in cellIds)
   {
+    if(binByCell){
+      columns <- c("pos", "chr", cellId)}
+    else{
+      columns <- c("pos", "chr", cellId, aggregateOn)}
+    
     # Retrieve met values for one cell
-    columns <- c("pos", "chr", cellId, aggregateOn)
     cellTable <- metTable[complete.cases(metTable[,..cellId]),..columns]
     setnames(cellTable, cellId, "rate")
     
     # Make Sure table is ordered
     setorder(cellTable, chr, pos)
+    
+    nCpGs <- nrow(cellTable)
+    if(binByCell) cellTable[, (aggregateOn):=fixedBinning(nCpGs, nCpGsBin)] 
     
     # Calculate Sample Entropy along width axis & aggregate
     widthEntropies[[cellId]] <- cellTable[,.(width_SampleEn=sampleEn(round(rate), 2, 0.2),
