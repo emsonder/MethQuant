@@ -31,6 +31,29 @@ double calcSD(NumericVector x)
 }
 
 
+std::map<int, double> prob(NumericVector x){
+  int n = x.size();
+  
+  std::map<int, int> counts; 
+  for (unsigned int i = 0; i < n; i++)
+  {
+    counts[x[i]]++;
+  }
+  
+  std::map<int, double> probs; 
+  
+  typename std::map<int, int>::iterator it;
+  it = counts.begin();
+  while(it != counts.end()){
+    int count = it->second;
+    probs[it->first] = (double)count/n;
+    it++; 
+  }
+  
+  return probs; 
+}
+
+
 // [[Rcpp::export]]
 double sampleEn(NumericVector x, int m, double r){
   int N = x.size();
@@ -91,18 +114,81 @@ double shannonEnDiscrete(NumericVector x){
   // Code adapted from: 
   // https://stackoverflow.com/questions/20965960/shannon-entropy
   
-  // For discrete data (few different doubles)
-  std::map<double, int> counts;
-  for (unsigned int i = 0; i < n; i++) {
-    counts[x[i]]++; 
-  }
+  std::map<int, double> probs = prob(x);
   
-  typename std::map<double, int>::iterator it;
-  it = counts.begin();
-  while(it != counts.end()){
-    double p_x = (double)it->second/n; 
+  typename std::map<int, double>::iterator it;
+  // Calculate Shannon Entropy
+  it = probs.begin();
+  while(it != probs.end()){
+    double p_x = it->second;
     if (p_x>0) entropy-=p_x*log2(p_x);
     it++;
   }
   return entropy;
 }
+
+
+std::vector<int> biDerivative(NumericVector x)
+{
+  // Could also be done with bit-wise operators for potential speed up
+  int n = x.size();
+
+  auto XOR = [](int x_1, int x_2)->int {int d_i = ((x_1+x_2)==1) ? 1 : 0;
+                                        return d_i;};
+  
+  std::vector<int> d;
+  for(int i = 0; i<(n-1); i++)
+  {
+    int d_i = XOR(x[i], x[i+1]);
+    d.push_back(d_i);
+  }
+  
+  return d; 
+}
+
+
+ // [[Rcpp::export]]
+double biEn(NumericVector x){
+  
+  int n = x.size();
+  // scaling factor 
+  double sc_f = (1/(pow(2,n-1)-1));
+
+  double biEn = 0.0; 
+  
+  NumericVector dk = x; 
+  for(unsigned int k = 0; k<=(n-2);k++)
+  {
+    double biEn_k = 0.0;
+    std::map<int, double> probs = prob(dk);
+    
+    double p_1 = probs[1];
+    
+    if((p_1==0.0) || (p_1==1.0))
+    {
+      biEn_k = 0;
+      break;
+    }
+    
+    // add entropy term of k-th derivation
+    biEn_k = (-p_1*log2(p_1)-(1-p_1)*log2(1-p_1))*pow(2,k);
+    biEn += biEn_k; 
+    
+    dk = biDerivative(dk);
+  }
+
+  return sc_f*biEn; 
+}
+
+
+/*** R
+x <- c(1,0,1,0,1,1,0,0)
+
+biEntropy <- biEn(x)
+print(biEntropy)
+
+sampEn <- sampleEn(x, 2, 0.2)
+print(sampEn)
+
+*/
+
