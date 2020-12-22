@@ -148,6 +148,7 @@ std::vector<int> biDerivative(NumericVector x)
 
 
  // [[Rcpp::export]]
+ // Binary Entropy: https://arxiv.org/ftp/arxiv/papers/1305/1305.0954.pdf
 double biEn(NumericVector x, bool tresBin){
   
   int n = x.size();
