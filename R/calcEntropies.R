@@ -13,6 +13,8 @@ sourceCpp("./C++/entropies.cpp")
 #'of genomic subsequences of single cells (width axis).
 #'Sample Entropy: Richman and Moorman, 2000
 #'https://journals.physiology.org/doi/full/10.1152/ajpheart.2000.278.6.h2039
+#'Binary Entropy: Croll, 2013
+#'https://arxiv.org/ftp/arxiv/papers/1305/1305.0954.pdf
 #'@param dataTable Either wide data.table of methylation rates (byCell=F) or
 #' or list with two wide data.tables, i.e. a methylation rates table and a table 
 #' with cell-specific bins (byCell=T).

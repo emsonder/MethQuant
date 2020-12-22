@@ -55,6 +55,8 @@ std::map<int, double> prob(NumericVector x){
 
 
 // [[Rcpp::export]]
+// Sample Entropy:
+// https://journals.physiology.org/doi/full/10.1152/ajpheart.2000.278.6.h2039
 double sampleEn(NumericVector x, int m, double r){
   int N = x.size();
   
@@ -102,6 +104,8 @@ double sampleEn(NumericVector x, int m, double r){
 
 
 // [[Rcpp::export]]
+// Shannon Entropy: 
+// http://people.math.harvard.edu/~ctm/home/text/others/shannon/entropy/entropy.pdf
 double shannonEnDiscrete(NumericVector x){
   double entropy=0;
   int n = x.size();
@@ -195,5 +199,21 @@ double biEn(NumericVector x, bool tresBin){
     dk = biDerivative(dk);
   }
 
+  // scale Binary Entropy
   return sc_f*biEn; 
 }
+
+// [[Rcpp::export]]
+
+double msEn(NumericVector x, int nScales)
+{
+  
+  
+  
+}
+
+/*** R
+x <- c(1,0,0,1)
+
+biEntropy <- biEn(x, tresBin=T)
+*/
