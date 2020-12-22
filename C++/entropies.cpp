@@ -148,47 +148,51 @@ std::vector<int> biDerivative(NumericVector x)
 
 
  // [[Rcpp::export]]
-double biEn(NumericVector x){
+double biEn(NumericVector x, bool tresBin){
   
   int n = x.size();
-  // scaling factor 
-  double sc_f = (1/(pow(2,n-1)-1));
+  double sc_f = 1; // Scaling factor initialization
+  std::function<double(double, int)> en_k; // Entropy of the k-th derivative
+  
+  if(!tresBin)
+  {
+    // scaling factor
+    sc_f = (1/(pow(2,n-1)-1));
+  
+    // biEntropy term of k-th derivation
+    en_k = [](double p_1, int k)->double {return (-p_1*log2(p_1)-(1-p_1)*log2(1-p_1))*pow(2,k);};
+  }
+  else
+  {
+    // scaling factor
+    double norm = 0.0;
+    for(unsigned int k=0;k<=(n-2);k++)
+    {
+      norm += log2(k+2);
+    }
+    sc_f = 1/norm;
+    
+    // Tres biEntropy term of k-th derivation
+    en_k = [](double p_1, int k)->double {return (-p_1*log2(p_1)-(1-p_1)*log2(1-p_1))*log2(k+2);};
+  }
 
   double biEn = 0.0; 
-  
   NumericVector dk = x; 
   for(unsigned int k = 0; k<=(n-2);k++)
   {
-    double biEn_k = 0.0;
     std::map<int, double> probs = prob(dk);
-    
     double p_1 = probs[1];
     
     if((p_1==0.0) || (p_1==1.0))
     {
-      biEn_k = 0;
       break;
     }
     
     // add entropy term of k-th derivation
-    biEn_k = (-p_1*log2(p_1)-(1-p_1)*log2(1-p_1))*pow(2,k);
-    biEn += biEn_k; 
+    biEn += en_k(p_1, k);
     
     dk = biDerivative(dk);
   }
 
   return sc_f*biEn; 
 }
-
-
-/*** R
-x <- c(1,0,1,0,1,1,0,0)
-
-biEntropy <- biEn(x)
-print(biEntropy)
-
-sampEn <- sampleEn(x, 2, 0.2)
-print(sampEn)
-
-*/
-

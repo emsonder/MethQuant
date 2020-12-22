@@ -5,6 +5,7 @@ library(data.table)
 library(Rcpp)
 
 first <- data.table::first
+source("./R/binSequence.R")
 sourceCpp("./C++/entropies.cpp")
 
 #'@title widthEntropy
@@ -46,6 +47,7 @@ widthEntropy <- function(metTable, cellIds,
     
     # Calculate Sample Entropy along width axis & aggregate
     widthEntropies[[cellId]] <- cellTable[,.(width_SampleEn=sampleEn(round(rate), 2, 0.2),
+                                             width_BiEn=biEn(round(rate), tresBin=F),
                                              nCpGs_width=.N,
                                              methylation_level_cell=mean(rate),
                                              mean_dis_CpGs=(last(pos)-first(pos))/.N,
