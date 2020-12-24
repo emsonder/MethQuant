@@ -27,7 +27,7 @@ sourceCpp("./C++/entropies.cpp")
 #'@return data.table with Entropies per genomic subsequence and cell
 widthEntropy <- function(metTable, cellIds, 
                          binByCell=T, nCpGsBin=8,
-                         aggregateOn="bin"){
+                         aggregateOn="bin", scaleFactors=c(2,4,8)){
   # Loop proved to be faster than conversion to long
   widthEntropies <- list()
   for(cellId in cellIds)
@@ -50,11 +50,16 @@ widthEntropy <- function(metTable, cellIds,
     # Calculate Sample Entropy along width axis & aggregate
     widthEntropies[[cellId]] <- cellTable[,.(width_SampleEn=sampleEn(round(rate), 2, 0.2),
                                              width_BiEn=biEn(round(rate), tresBin=F),
+                                             width_MsEn_sc1=msEn(round(rate), scaleFactors[1]), # Make it generic
+                                             width_MsEn_sc2=msEn(round(rate), scaleFactors[2]),
+                                             width_MsEn_sc3=msEn(round(rate), scaleFactors[3]),
                                              nCpGs_width=.N,
+                                             bin_start = min(pos),
+                                             bin_end = max(pos),
                                              methylation_level_cell=mean(rate),
                                              mean_dis_CpGs=(last(pos)-first(pos))/.N,
                                              median_pos=as.integer(median(pos))),
-                                          by=aggregateOn]
+                                           by=aggregateOn]
   }
   
   widthEntropies <- rbindlist(widthEntropies,  idcol="cell_id")

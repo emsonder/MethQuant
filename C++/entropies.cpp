@@ -203,17 +203,48 @@ double biEn(NumericVector x, bool tresBin){
   return sc_f*biEn; 
 }
 
-// [[Rcpp::export]]
 
-double msEn(NumericVector x, int nScales)
+NumericVector aggregateSeries(NumericVector x, int scFactor)
 {
+  int n = x.size();
+  // TODO: Catch edge cases
+  //int agg_n = n/scFactor; 
+  NumericVector agg_x; 
+
+  for(unsigned int i=0; i<n; i+=scFactor) // <= 2?
+  {
+    agg_x.push_back(calcMean(x[Rcpp::Range(i, i+(scFactor-1))]));
+  }
   
-  
-  
+  return agg_x;
 }
 
-/*** R
-x <- c(1,0,0,1)
 
-biEntropy <- biEn(x, tresBin=T)
+// [[Rcpp::export]]
+// Multiscale Entropy: 
+// https://journals.aps.org/pre/pdf/10.1103/PhysRevE.71.021906
+std::map<int, double> msEn(NumericVector x, std::vector<int> scFactors)
+{
+  std::map<int, double> sampEns;
+  // Calculate Sample Entropies for different scales
+  for(std::vector<int>::iterator it=scFactors.begin(); it != scFactors.end();++it)
+  {
+    // aggregate series (coarse grained)
+    NumericVector agg_x = aggregateSeries(x, *it);
+    sampEns[*it] = sampleEn(agg_x, 2, 0.2);
+  }
+  
+  // Sum up sample Entropies on different scales
+  // double sumSampEns = std::accumulate(sampEns.begin(), sampEns.end(), 0.0);
+  
+  // TODO return map with scale & corresponding SampEn values
+  
+  return sampEns; 
+}
+
+
+/*** R
+#x <- c(1,0,0,1, 0,1,1,1,1)
+x <- sample(c(1,0), 1000, replace=T)
+msEns <- msEn(x, scFactors=c(2,4))
 */
