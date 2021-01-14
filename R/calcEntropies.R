@@ -99,6 +99,8 @@ heightEntropy <- function(metTable, cellIds, aggregateOn="bin"){
   metTableLong[complete.cases(rate), nCpGs:=.N, by=cols]
   
   # Aggregate
+  if(is.null(aggregateOn)) aggregateOn <- c("chr", "pos")
+  
   heightEntropies <- metTableLong[,.(height_entropy=mean(height_entropy, na.rm=T),
                                      mean_nCpGs_height=mean(nCpGs, na.rm=T),
                                      methylation_level_bulk=mean(rate, na.rm=T),
