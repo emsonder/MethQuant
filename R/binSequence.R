@@ -1,4 +1,4 @@
-source("./R/calcCpGDensity.R")
+#source("./R/calcCpGDensity.R")
 
 # Tiling Binning approach (user input bin size in bps)
 tileBinning <- function(binSize)
