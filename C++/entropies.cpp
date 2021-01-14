@@ -31,8 +31,15 @@ double calcSD(NumericVector x)
 }
 
 
-std::map<int, double> prob(NumericVector x){
+std::map<int, double> prob(NumericVector x, bool discretize){
   int n = x.size();
+  
+  
+  // Discretize: Scale and tranform to int to avoid the use of doubles as keys.
+  if(discretize)
+  {
+    std::transform(x.begin(), x.end(), x.begin(), [](double d) { return (int)(d*100);});
+  }
   
   std::map<int, int> counts; 
   for (unsigned int i = 0; i < n; i++)
@@ -42,7 +49,7 @@ std::map<int, double> prob(NumericVector x){
   
   std::map<int, double> probs; 
   
-  typename std::map<int, int>::iterator it;
+  std::map<int, int>::iterator it;
   it = counts.begin();
   while(it != counts.end()){
     int count = it->second;
@@ -118,7 +125,7 @@ double shannonEnDiscrete(NumericVector x){
   // Code adapted from: 
   // https://stackoverflow.com/questions/20965960/shannon-entropy
   
-  std::map<int, double> probs = prob(x);
+  std::map<int, double> probs = prob(x, true);
   
   typename std::map<int, double>::iterator it;
   // Calculate Shannon Entropy
@@ -185,7 +192,7 @@ double biEn(NumericVector x, bool tresBin){
   NumericVector dk = x; 
   for(unsigned int k = 0; k<=(n-2);k++)
   {
-    std::map<int, double> probs = prob(dk);
+    std::map<int, double> probs = prob(dk, false);
     double p_1 = probs[1];
     
     if((p_1==0.0) || (p_1==1.0))
@@ -237,14 +244,5 @@ std::map<int, double> msEn(NumericVector x, std::vector<int> scFactors)
   // Sum up sample Entropies on different scales
   // double sumSampEns = std::accumulate(sampEns.begin(), sampEns.end(), 0.0);
   
-  // TODO return map with scale & corresponding SampEn values
-  
   return sampEns; 
 }
-
-
-/*** R
-#x <- c(1,0,0,1, 0,1,1,1,1)
-x <- sample(c(1,0), 1000, replace=T)
-msEns <- msEn(x, scFactors=c(2,4))
-*/
