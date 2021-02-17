@@ -21,11 +21,14 @@ sourceCpp("./C++/entropies.cpp")
 #'@param cellIds unique Identifiers of single cells
 #'@param binByCell Cell-specific binning
 #'@param nCpGsBin Number of CpGs per Bin
+#'@param templateDim Size of methylation templates (embedding dimension for 
+#'sample entropy)
 #'@param aggregateOn Column of table defining the genomic subsequences to 
 #'calculate the entropy scores on. 
 #'@return data.table with Entropies per genomic subsequence and cell
 widthEntropy <- function(metTable, cellIds, 
                          binByCell=T, nCpGsBin=128,
+                         templateDim=2,
                          aggregateOn="bin", scaleFactors=c(2,4,8)){
   # Loop proved to be faster than conversion to long
   widthEntropies <- list()
@@ -51,7 +54,7 @@ widthEntropy <- function(metTable, cellIds,
     #cellTable[,rate:=fifelse(rate==1 | rate==0, rate, 0.5)]
     
     # Calculate Sample Entropy along width axis & aggregate
-    widthEntropies[[cellId]] <- cellTable[,.(width_SampleEn=sampleEn(rate, 2, 0.2),
+    widthEntropies[[cellId]] <- cellTable[,.(width_SampleEn=sampleEn(rate, templateDim, 0),
                                              width_BiEn=biEn(rate, tresBin=F),
                                              width_MsEn_sc1=msEn(rate, scaleFactors[1]), # Make it generic
                                              width_MsEn_sc2=msEn(rate, scaleFactors[2]),
@@ -62,7 +65,7 @@ widthEntropy <- function(metTable, cellIds,
                                              methylation_level_cell=mean(rate),
                                              mean_dis_CpGs=(last(pos)-first(pos))/.N,
                                              median_pos=as.integer(median(pos))),
-                                            by=aggregateOn]
+                                            by=c(aggregateOn, "chr")]
   }
   
   widthEntropies <- rbindlist(widthEntropies,  idcol="cell_id")
