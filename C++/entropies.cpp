@@ -69,7 +69,7 @@ double sampleEn(NumericVector x, int m, double r){
   
   if(N<2)
   {
-    return NAN; 
+    return R_NaN; 
   }
   
   // Code adapted from: 
@@ -84,7 +84,7 @@ double sampleEn(NumericVector x, int m, double r){
   tol = sd * r;
   
   for (unsigned int i = 0; i < N - m; i++) {
-    for (unsigned int j = i + 1; j < N - m; j++) {      
+    for (unsigned int j = i + 1; j < N-m; j++) {      
       bool eq = true;
       
       // Chebyshev distance criteria
@@ -105,8 +105,10 @@ double sampleEn(NumericVector x, int m, double r){
   
   if (cm > 0 && cm_1 > 0)
     return log((double)cm / (double)cm_1);
+  else if(cm>0)
+    return R_PosInf; // or NAN
   else
-    return 0.0; 
+    return R_NaN; // This case cannot happen!
 }
 
 
