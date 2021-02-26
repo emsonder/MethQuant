@@ -1,0 +1,338 @@
+---
+title: "Emanuel Sonder's SMP on scMT - descriptive"
+author: "Izaskun Mallona at Mark D. Robinson lab, UZH"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+    code_download: true
+    number_sections: true
+    df_print: kable
+    theme: lumen
+params:
+  seed: 665
+---
+
+```{r}
+library(VGAM)
+library(mhsmm)
+library(data.table)
+library(knitr)
+library(genomation)
+library(AnnotationHub)
+library(GenomicRanges)
+library(TxDb.Mmusculus.UCSC.mm10.knownGene)
+```
+
+```{r}
+opts_chunk$set(fig.width = 5,
+               fig.height = 5,
+               cache = TRUE,
+               include = TRUE,
+               cache.lazy = FALSE,
+               warning = TRUE,
+               message = FALSE)
+
+
+options(bitmapType='cairo')
+```
+
+```{r}
+DATA <- '/home/imallona/GSE1721708'
+CODE <- '/home/imallona/src/smp'
+WD <- file.path('/home/imallona', 'smp_test')
+
+NTHREADS = 32
+```
+
+```{r}
+setDTthreads(NTHREADS)
+```
+
+# Aim
+
+todo
+
+Please run `get_annotations.sh` first
+
+# SMP run
+
+```{r}
+d <- list()
+
+for (fn in list.files(DATA))
+    d[[gsub('.rds', '', fn)]] <- readRDS(file.path(DATA, fn))
+
+```
+
+```{r}
+wd <- getwd()
+setwd(file.path(CODE))
+
+for (fn in list.files(file.path(CODE, 'R'))) {
+    source(file.path(CODE, 'R', fn))
+}
+
+setwd(wd)
+```
+
+```{r}
+## remove cells from met_table that are not present as metadata
+table(d$cellMap$cell %in% colnames(d$met_table_chr4))
+
+common <- intersect(d$cellMap$cell, colnames(d$met_table_chr4))
+length(common)
+
+selected <- c('chr', 'pos', common)
+
+d$cellMap <- d$cellMap[d$cellMap$cell %in% common,]
+
+stopifnot(all(d$cellMap$cell %in% colnames(d$met_table_chr4)))
+```
+
+```{r}
+tryCatch({
+    ew <- widthEntropy(metTable = d$met_table_chr4,
+                       cellIds = d$cellMap$cell,
+                       binByCell = TRUE,
+                       nCpGsBin = 128)
+}, error = function(x) print(x))
+```
+
+
+```{r}
+tryCatch({
+    eh <- heightEntropy(metTable = d$met_table_chr4,
+                        cellIds = d$cellMap$cell)
+}, error = function(x) print(x))
+```
+
+
+# Convert to GR or export to BED
+
+```{r}
+print('code me')
+```
+
+# Query data from annotation hub
+
+Annotation hub querying - alternative to UCSC MySQL endpoint
+
+```{r}
+ah <- AnnotationHub()
+
+head(query(ah, c("mm10", "stem"))$title)
+head(query(ah, c("mm10", "gene"))$title)
+```
+
+Using the `TxDb.Mmusculus.UCSC.mm10.knownGene` instead
+
+```{r}
+txdb <- TxDb.Mmusculus.UCSC.mm10.knownGene
+proms <- promoters(txdb)[seqnames(promoters(txdb)) == "chr4"]
+genes <- genes(txdb)[seqnames(genes(txdb)) == "chr4"]
+```
+
+Import local data, filter for chr4
+
+```{r}
+## read
+ann <- list()
+
+for (bed in list.files(file.path(WD, 'data'), ".*mm10.*bed.gz", recursive = TRUE)) {
+    if (grepl('unmapped', bed))
+        next
+    tag <- gsub('.bed.gz', '', basename(bed))
+    ann[[tag]] <- readGeneric(file.path(WD, 'data', bed),
+                              header = TRUE, keep.all.metadata = TRUE)
+
+    ann[[tag]] <- ann[[tag]][seqnames(ann[[tag]]) == "chr4"]
+}
+
+names(ann)
+
+```
+
+# Genomation
+
+todo check scores are properly handled
+
+## Promoters vs genes
+
+```{r}
+sm <- ScoreMatrixBin(target = proms,
+                 windows = genes,
+                 bin.num = 50,
+                 strand.aware = TRUE)
+```
+
+```{r, fig.width = 6, fig.height = 6}
+## 'summits' only - somewhat
+heatMatrix(sm, xcoords = c(-2e3, 10e3),
+           clustfun = function(x) kmeans(x, centers = 4)$cluster)
+
+```
+
+## LaminB1 vs repliseqs, by genes (?)
+
+Example with laminB1 plus a couple of repliseqs, promoters, and equally spaced windows. Promoters at least should be associated to genes, but let's see
+
+```{r}
+targets <- list(laminb1 = ann$mm9_laminB1_AC_liftovered_mm10,
+                repliseq_a = ann$ENCFF001JUP_liftovered_mm10,
+                repliseq_b = ann$ENCFF001JUQ_liftovered_mm10,
+                promoters = proms,
+                windows = ann$mm10_100k_bp_windows)
+
+sml <- ScoreMatrixList(targets = targets,
+                      windows = genes,
+                      bin.num = 100, strand.aware = TRUE)
+
+```
+
+```{r, fig.width = 10, fig.height = 5}
+multiHeatMatrix(sml, xcoords = c(-2e3, 5e3),
+                clustfun = function(x) kmeans(x, centers = 4)$cluster,
+                col = c("lightgray", "blue"))
+```
+
+```{r, fig.width = 5, fig.height = 5}
+plotMeta(mat=sml, centralTend="mean", dispersion="se", winsorize=c(0,99),
+         xcoords = c(-2e3, 1e3),
+         main="Dispersion as interquartile band", lwd=2,
+         smoothfun=function(x) stats::lowess(x, f = 1/5),
+         profile.names = names(targets))
+```
+
+What about scaling?
+
+```{r}
+sml.scaled <- scaleScoreMatrixList(sml)
+
+multiHeatMatrix(sml.scaled, xcoords = c(-2e3, 5e3),
+                clustfun = function(x) kmeans(x, centers = 4)$cluster,
+                col = c("lightgray", "blue"))
+
+```
+
+## LaminB1 vs islands, by 1k windows (?)
+
+Similarly but not focusing in genes but in 10kb-sized genomic windows
+
+
+```{r, fig.width = 8, fig.height = 8}
+targets <- list(laminb1 = ann$mm9_laminB1_AC_liftovered_mm10,
+                genes = genes,
+                islands = ann$mm10_cpgIslandExtUnmasked)
+
+sml <- ScoreMatrixList(targets = targets,
+                      windows = ann$mm10_1k_bp_windows,
+                      bin.num = 20, strand.aware = TRUE,
+                      cores = NTHREADS)
+
+```
+
+```{r, fig.width = 10, fig.height = 5}
+multiHeatMatrix(sml, xcoords = c(-500, 500),
+                clustfun = function(x) kmeans(x, centers = 4)$cluster,
+                col = c("lightgray", "blue"))
+```
+
+```{r}
+plotMeta(mat=sml, centralTend="mean", dispersion="se", winsorize=c(0,99),
+               xcoords = c(-500, 500),
+               main="Dispersion as interquartile band", lwd=2,
+               smoothfun=function(x) stats::lowess(x, f = 1/5),
+               profile.names = names(targets))
+
+```
+
+## Sample entropy and methylation
+
+```{r}
+
+print('code me/not sure scores are ok')
+ew$seqnames <- 'chr4'
+
+ew_gr <- makeGRangesFromDataFrame(ew[ew$cell_id == 'TET_EB_repeat_Plate9_H04',],
+                                  keep.extra.columns = TRUE,
+                                  ignore.strand = FALSE,
+                                  seqinfo = NULL,
+                                  seqnames.field = "seqnames",
+                                  start.field = "bin_start",
+                                  end.field = c("bin_end"),
+                                  starts.in.df.are.0based = FALSE)
+
+```
+
+```{r}
+targets <- list(laminb1 = ann$mm9_laminB1_AC_liftovered_mm10,
+                genes = genes,
+                meth = ew_gr[,'methylation_level_cell'],
+                width_SampleEn = ew_gr[,'width_SampleEn'])
+
+sml <- ScoreMatrixList(targets = targets,
+                      windows =  ann$mm10_cpgIslandExtUnmasked,
+                      bin.num = 20, strand.aware = FALSE)
+                      
+```
+
+```{r}
+plotMeta(mat = sml, centralTend="mean", dispersion="se", winsorize=c(0,99),
+               xcoords = c(-100, 100),
+               main="Dispersion as interquartile band", lwd=2,
+               smoothfun=function(x) stats::lowess(x, f = 1/5),
+               profile.names = names(targets))
+
+```
+
+```{r}
+plotMeta(mat = sml, centralTend="mean", dispersion="se", winsorize=c(0,99),
+               xcoords = c(-1e3, 1e3),
+               main="Dispersion as interquartile band", lwd=2,
+               smoothfun=function(x) stats::lowess(x, f = 1/5),
+         profile.names = names(targets))
+
+multiHeatMatrix(sml, xcoords = c(-1e3, 1e3),
+                clustfun = function(x) kmeans(x, centers = 4)$cluster,
+                col = c("lightgray", "blue"))
+
+```
+
+What about scaling?
+
+```{r}
+sml.scaled <- scaleScoreMatrixList(sml)
+
+multiHeatMatrix(sml.scaled, xcoords = c(-2e3, 5e3),
+                clustfun = function(x) kmeans(x, centers = 4)$cluster,
+                col = c("lightgray", "blue"))
+
+```
+
+```{r}
+
+plotMeta(mat = sml.scaled, centralTend="mean", dispersion="se", winsorize=c(0,99),
+               xcoords = c(-1e3, 1e3),
+               main="Dispersion as interquartile band", lwd=2,
+               smoothfun=function(x) stats::lowess(x, f = 1/5),
+         profile.names = names(targets))
+```
+
+# By bin correlations
+
+Pairwise scatterplot of signals/scores etc
+
+```{r}
+print('todo')
+```
+
+# Session
+
+```{r}
+sessionInfo()
+date()
+devtools::session_info()
+```
