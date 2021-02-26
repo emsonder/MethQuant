@@ -86,6 +86,16 @@ mysql --user=genome --host=genome-euro-mysql.soe.ucsc.edu -A \
        mm9_laminB1_AC_liftovered_mm10.bed \
        mm9_laminB1_AC_liftovered_mm10_unmapped.bed
 
+
+## maybe weird, but what about collapsing regions with positive
+##  values if they're closer than 5kbp?
+$BEDTOOLS sort -i mm9_laminB1_AC_liftovered_mm10.bed |\
+    awk 'BEGIN {FS=OFS="\t" }; { 
+      if($4 < 0) print $1,$2,$3,"n", "0", "+"; 
+      else print $1, $2,$3,"p","0","-"
+      }'  | \
+        $BEDTOOLS merge -d 5000 -c 4 -o distinct -s > lamina_mm10_test.bed
+
 pigz -p $NTHREADS *.bed
 
 ## lamina end
@@ -154,6 +164,21 @@ mysql --user=genome --host=genome-euro-mysql.soe.ucsc.edu -A \
 pigz -p "$NTHREADS" *bed
 
 ## cpgislands end
+
+
+## chromHMM ESC mm10 start
+
+mkdir -p "$WD"/data/chromHMM
+cd $_
+
+wget https://github.com/guifengwei/ChromHMM_mESC_mm10/raw/master/mESC_E14_12_dense.annotated.bed.gz
+
+zcat mESC_E14_12_dense.annotated.bed.gz | sed '1d' | cut -f1-4 > mESC_E14_12_chromHMM.bed
+
+rm mESC_E14_12_dense.annotated.bed.gz
+pigz -p "$NTHREADS" *bed
+
+## chromHMM ESC mm10 end
 
 # compress on exit
 
