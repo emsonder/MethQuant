@@ -7,10 +7,11 @@ library(Rcpp)
 library(plyr)
 
 source("./R/binSequence.R")
+source("./R/calcEntropies.R")
 
 shift <- data.table::shift
 
-.getTemplates <- function(metTable, cellIds, templateDim)
+.getTemplatesE <- function(metTable, cellIds, templateDim)
 {
   m <- templateDim
   
@@ -72,9 +73,25 @@ calcCrossEntropies <- function(metTable, cellIds, templateDim,
   
   m <- templateDim
   
-  # Get Templates
-  templatesSet <- .getTemplates(metTable, cellIds, templateDim)
+  # Construct Templates
+  templateSet <- list()
+  for(cellId in cellIds)
+  {
+    # Celltable 
+    columns <- c("pos", "chr", cellId)
+    
+    cellTable <- metTable[,..columns]
+    setnames(cellTable, cellId, "rate")
+    setorder(cellTable, chr, pos)
+    
+    # Rounding 
+    cellTable[,rate:=round_any(rate, 0.5)]
+    
+    templateSet[[cellId]] <- .getTemplates(cellTable, m)
+  }
+  templateSet <- rbindlist(templateSet, idcol="cell_id")
 
+  
   if(mergeAnnotations)
   {
     annotationTable$name <- "merged"

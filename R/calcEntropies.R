@@ -73,6 +73,28 @@ widthEntropy <- function(metTable, cellIds,
   return(widthEntropies)
 }
 
+.getTemplates <- function(cellTable, m){
+  
+  # Mark adjacent CpGs
+  isCovered <- !is.na(cellTable[,rate])
+  temps <- frollsum(isCovered, m+1, align="right")
+  cellTable$isAdj <- fifelse(temps==m+1 & !is.na(temps), T, F)
+  
+  # Construct (adjacent) templates
+  cellTable[,temp_start:=fifelse(shift(isAdj,n=m, type="lead"), pos, NaN, na=NaN)]
+  cellTable[,temp_end:=fifelse(!is.na(temp_start), shift(pos, n=m,type="lead"), NaN)] # temp_start+m
+  
+  tempCols <- as.character(0:m)
+  cellTable[,(tempCols):=lapply(0:m, function(i) shift(rate, n=i, type="lead"))]
+  
+  templates <- cellTable[!is.nan(temp_start),]
+  templates[,tempM:=paste(.SD, sep="", collapse=""), by=temp_start, .SDcols=tempCols[1:m]]
+  templates[,tempMP:=paste(.SD, sep="", collapse=""), by=temp_start, .SDcols=tempCols[1:(m+1)]]
+  
+  
+  return(templates)
+}
+
 #'@title widthKeepSampEn
 #'@description Calculates Sample Entropies along methylation patterns
 #'of genomic subsequences of single cells (width axis). Slight adaption of Sample
@@ -112,21 +134,8 @@ widthKeepSampEn <- function(metTable,
     # Rounding 
     cellTable[,rate:=round_any(rate, 0.5)]
     
-    # Mark adjacent CpGs
-    isCovered <- !is.na(cellTable[,rate])
-    temps <- frollsum(isCovered, m+1, align="right")
-    cellTable$isAdj <- fifelse(temps==m+1 & !is.na(temps), T, F)
-    
-    # Construct (adjacent) templates
-    cellTable[,temp_start:=fifelse(shift(isAdj,n=m, type="lead"), pos, NaN, na=NaN)]
-    cellTable[,temp_end:=fifelse(!is.na(temp_start), shift(pos, n=m,type="lead"), NaN)] # temp_start+m
-    
-    tempCols <- as.character(0:m)
-    cellTable[,(tempCols):=lapply(0:m, function(i) shift(rate, n=i, type="lead"))]
-    
-    templates <- cellTable[!is.nan(temp_start),]
-    templates[,tempM:=paste(.SD, sep="", collapse=""), by=temp_start, .SDcols=tempCols[1:m]]
-    templates[,tempMP:=paste(.SD, sep="", collapse=""), by=temp_start, .SDcols=tempCols[1:(m+1)]]
+    # Construct templates
+    templates <- .getTemplates(cellTable, m)
     
     if(fixedBinning)
     {
