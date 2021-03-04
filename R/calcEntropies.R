@@ -110,14 +110,14 @@ widthEntropy <- function(metTable, cellIds,
 #'estimation. Should not be too small.
 #'@param templateDim Size of methylation templates (embedding dimension for 
 #'sample entropy)
-#'@param fixedBinning If TRUE tiled (non-overlapping) bins are used across the templates, 
+#'@param tiledBinning If TRUE tiled (non-overlapping) bins are used across the templates, 
 #'if FALSE moving bins (one template at the time) are applied. 
 #'@return data.table with Entropies per genomic subsequence and cell
 widthKeepSampEn <- function(metTable, 
                             cellIds, 
                             nTempsBin=100,
                             templateDim=2,
-                            fixedBinning=T){
+                            tiledBinning=T){
   
   m <- templateDim
   
@@ -137,7 +137,7 @@ widthKeepSampEn <- function(metTable,
     # Construct templates
     templates <- .getTemplates(cellTable, m)
     
-    if(fixedBinning)
+    if(tiledBinning)
     {
       # Binning
       nTemps <- nrow(templates)
