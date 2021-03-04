@@ -11,47 +11,6 @@ source("./R/calcEntropies.R")
 
 shift <- data.table::shift
 
-.getTemplatesE <- function(metTable, cellIds, templateDim)
-{
-  m <- templateDim
-  
-  templatesSet <- list()
-  for(cellId in cellIds)
-  {
-    columns <- c("pos", "chr", cellId)
-    
-    cellTable <- metTable[,..columns]
-    setnames(cellTable, cellId, "rate")
-    setorder(cellTable, chr, pos)
-    
-    # Rounding 
-    cellTable[,rate:=round_any(rate, 0.5)]
-    
-    # Mark adjacent CpGs
-    isCovered <- !is.na(cellTable[,rate])
-    temps <- frollsum(isCovered, m+1)
-    cellTable$isAdj <- fifelse(temps==m+1 & !is.na(temps), T, F)
-    
-    # Construct templates
-    cellTable[,temp_start:=fifelse(shift(isAdj,n=m, type="lead"), pos, NaN, na=NaN)]
-    cellTable[,temp_end:=fifelse(!is.na(temp_start), shift(pos, n=m,type="lead"), NaN)] 
-    
-    tempCols <- as.character(0:m)
-    cellTable[,(tempCols):=lapply(0:m, function(i) shift(rate, n=i, type="lead"))]
-    
-    templates <- cellTable[!is.nan(temp_start),]
-    templates[,tempM:=paste(.SD, sep="", collapse=""), by=temp_start, .SDcols=tempCols[1:m]]
-    templates[,tempMP:=paste(.SD, sep="", collapse=""), by=temp_start, .SDcols=tempCols[1:(m+1)]]
-  
-    templatesSet[[cellId]] <- templates
-  }
-
-  templatesSet <- rbindlist(templatesSet, idcol="cell_id")
-  
-  return(templatesSet)
-}
-
-
 #'@title calcCrossEntropies
 #'@description Calculates Cross Sample Entropies (cross-SampEn) between methylation patterns 
 #'of different cells. 
@@ -74,7 +33,7 @@ calcCrossEntropies <- function(metTable, cellIds, templateDim,
   m <- templateDim
   
   # Construct Templates
-  templateSet <- list()
+  templatesSet <- list()
   for(cellId in cellIds)
   {
     # Celltable 
@@ -87,9 +46,9 @@ calcCrossEntropies <- function(metTable, cellIds, templateDim,
     # Rounding 
     cellTable[,rate:=round_any(rate, 0.5)]
     
-    templateSet[[cellId]] <- .getTemplates(cellTable, m)
+    templatesSet[[cellId]] <- .getTemplates(cellTable, m)
   }
-  templateSet <- rbindlist(templateSet, idcol="cell_id")
+  templatesSet <- rbindlist(templatesSet, idcol="cell_id")
 
   
   if(mergeAnnotations)
