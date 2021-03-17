@@ -11,7 +11,7 @@ source("./R/calcEntropies.R")
 
 shift <- data.table::shift
 
-#'@title calcCrossEntropies
+#'@title calcCrossSampEn
 #'@description Calculates Cross Sample Entropies (cross-SampEn) between methylation patterns 
 #'of different cells. 
 #'Sample Entropy: Richman and Moorman, 2000
@@ -27,8 +27,12 @@ shift <- data.table::shift
 #'calculation of cross-SampEns.  
 #'@return Dissimilarity matrix in form of a data.table wwith 
 #' pairwise cross-SampEns between cells
-calcCrossEntropies <- function(metTable, cellIds, templateDim,
-                                  annotationTable, mergeAnnotations=T){
+calcCrossSampEn <- function(metTable, 
+                            cellIds, 
+                            templateDim,
+                            annotationTable, 
+                            minTemps=32,
+                            mergeAnnotations=T){
   
   m <- templateDim
   
@@ -66,8 +70,6 @@ calcCrossEntropies <- function(metTable, cellIds, templateDim,
   templatesSubset <- subset(templatesSet, !is.na(name))
   templatesSubset[,n_temp:=.N, by=c("cell_id", "name")]
   
-  # TODO: Add to arguments?
-  minTemps <- 30
   
   calcPairWiseMatches <- function(tempX, tempY){
     sum(outer(tempX,tempY,function(x,y){return(x==y)}))
