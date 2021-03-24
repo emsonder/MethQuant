@@ -1,0 +1,147 @@
+---
+title: "Emanuel Sonder's SMP on Wang's early embryos"
+author: "Izaskun Mallona at Mark D. Robinson lab, UZH"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+    code_download: true
+    number_sections: true
+    df_print: kable
+    theme: lumen
+params:
+  seed: 665
+---
+
+```{r}
+library(VGAM)
+library(mhsmm)
+library(data.table)
+library(knitr)
+library(genomation)
+library(AnnotationHub)
+library(GenomicRanges)
+## library(TxDb.Mmusculus.UCSC.mm10.knownGene)
+library(GEOquery)
+library(Matrix)
+## library(mltools) # just for sparsify()
+```
+
+```{r}
+opts_chunk$set(fig.width = 5,
+               fig.height = 5,
+               cache = TRUE,
+               include = TRUE,
+               cache.lazy = FALSE,
+               warning = TRUE,
+               message = FALSE)
+
+
+options(bitmapType='cairo')
+```
+
+```{r}
+CODE <- '/home/imallona/src/smp'
+WD <- file.path('/home/imallona', 'smp_test')
+GSE <- 'GSE136718'
+
+NTHREADS = 80
+```
+
+```{r}
+setDTthreads(NTHREADS)
+```
+
+# Aim
+
+Data from https://www.nature.com/articles/s41467-021-21409-8#data-availability and https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE136718 .
+
+Please run `get_data.sh` first.
+
+# (meta) data retrieval
+
+```{r, eval = FALSE}
+## run `get_data.sh` instead
+supp <- getGEOSuppFiles(GSE, fetch_files = FALSE)$url
+if (!file.exists( file.path(WD, paste0(GSE, '.tar')))){
+    system(command = sprintf('wget %s --output-file %s', supp, file.path(WD, paste0(GSE, '.tar'))))
+}
+```
+
+Metadata retrieval
+
+```{r, message = FALSE}
+gsml <- getGEO(GSE, GSEMatrix = FALSE)
+
+head(names(GSMList(gsml)))
+meta <- data.frame(id = names(GSMList(gsml)),
+                   source_name_ch1 = NA,
+                   library_strategy = NA,
+                   title = NA,
+                   description = NA, row.names = 1)
+
+for (id in rownames(meta)) {
+    for (feat in colnames(meta)) {
+        tryCatch({
+            meta[id,feat] <- Meta(GSMList(gsml)[[id]])[feat]
+        }, error = function(x) return(NA))
+    }
+}
+
+## table(meta$library_strategy)
+## head(meta$title)
+meta$tr <- sapply(regmatches(meta$title, gregexpr("\\[[^][]*]", meta$title)),
+                  function(x) return(x[1]))
+meta$id <- sprintf('%s_%s', rownames(meta), gsub('[[:punct:]]', '', meta$tr))
+
+```
+
+Build a (nonsparse) locus x cell table for CpG methylation
+
+```{r}
+d <- list()
+## i <- 1
+for (fn in list.files(WD, pattern = "*WCG.dat.gz")) {
+    d[[fn]] <- fread(file.path(WD, fn),
+                     header = FALSE,
+                     col.names = c('id', gsub('.dat.gz', '', basename(fn))))
+    ## i <- i +1
+    ## if (i ==10) stop('')
+}
+
+str(d)
+
+merged <- Reduce(function(x, y) merge(x, y, all = TRUE, by = 'id'), d)
+merged[1:3, 1:3]
+rm(d)
+gc()
+
+```
+
+Export the beta values with an offset of 1, to encode NAs as `0` (not stored), unmethylations as `1`, and full methylations as `2`.
+
+```{r}
+# export
+loci <- merged$id
+merged <- merged[,-1]
+cells <- colnames(merged)
+## merged[merged == 0] <- 2
+## merged[is.na(merged)] <- 0
+merged <- merged + 1
+
+merged <- as(as.matrix(merged), 'dgCMatrix')
+dimnames(merged) <- list(loci, cells)
+Matrix::writeMM(file = file.path(WD, sprintf('%s_all.mm', GSE)),
+                obj = merged)
+
+```
+
+# sessionInfo
+
+```{r}
+sessionInfo()
+date()
+devtools::session_info()
+```
