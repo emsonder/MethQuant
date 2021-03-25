@@ -27,6 +27,7 @@ library(GenomicRanges)
 library(GEOquery)
 library(Matrix)
 ## library(mltools) # just for sparsify()
+library(readxl) # for ICRs import 
 ```
 
 ```{r}
@@ -47,7 +48,7 @@ CODE <- '/home/imallona/src/smp'
 WD <- file.path('/home/imallona', 'smp_test')
 GSE <- 'GSE136718'
 
-NTHREADS = 80
+NTHREADS = 35
 ```
 
 ```{r}
@@ -120,6 +121,12 @@ gc()
 
 ```
 
+Conventional export
+
+```{r}
+saveRDS(merged, file =  file.path(WD, sprintf('%s_all.rds', GSE)))
+```
+
 Export the beta values with an offset of 1, to encode NAs as `0` (not stored), unmethylations as `1`, and full methylations as `2`.
 
 ```{r}
@@ -130,11 +137,25 @@ cells <- colnames(merged)
 ## merged[merged == 0] <- 2
 ## merged[is.na(merged)] <- 0
 merged <- merged + 1
+merged[is.na(merged)] <- 0
 
 merged <- as(as.matrix(merged), 'dgCMatrix')
 dimnames(merged) <- list(loci, cells)
 Matrix::writeMM(file = file.path(WD, sprintf('%s_all.mm', GSE)),
                 obj = merged)
+
+```
+
+# Add ICRs
+
+As described by https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3343639/bin/NIHMS353366-supplement-03.xls
+
+This is mm9 according to suppl. material 1, page 7.
+
+```{r}
+system(sprintf('wget %s -O %s', "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3343639/bin/NIHMS353366-supplement-03.xls", file.path(WD, 'icrs_PMC3343639_mm9.xls')))
+icrs <- read_excel(file.path(WD, 'icrs_PMC3343639_mm9.xls'), skip = 3)
+icrs <- as.data.frame(icrs)
 
 ```
 
