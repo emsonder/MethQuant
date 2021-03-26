@@ -24,6 +24,7 @@ library(genomation)
 library(AnnotationHub)
 library(GenomicRanges)
 ## library(TxDb.Mmusculus.UCSC.mm10.knownGene)
+library(TxDb.Mmusculus.UCSC.mm9.knownGene)
 library(GEOquery)
 library(Matrix)
 ## library(mltools) # just for sparsify()
@@ -55,9 +56,23 @@ NTHREADS = 35
 setDTthreads(NTHREADS)
 ```
 
+```{r}]
+## load smp functions
+wd <- getwd()
+setwd(file.path(CODE))
+
+for (fn in list.files(file.path(CODE, 'R'))) {
+    source(file.path(CODE, 'R', fn))
+}
+
+setwd(wd)
+```
+
 # Aim
 
 Data from https://www.nature.com/articles/s41467-021-21409-8#data-availability and https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE136718 .
+
+This is mm9.
 
 Please run `get_data.sh` first.
 
@@ -158,6 +173,31 @@ icrs <- read_excel(file.path(WD, 'icrs_PMC3343639_mm9.xls'), skip = 3)
 icrs <- as.data.frame(icrs)
 
 ```
+
+# Calculate entropies
+
+Downsampling data to chr4 for testing purposes
+
+```{r}
+met <- as.matrix(merged[grep('chr4:', rownames(merged)),])
+
+## this is quite absurd, it's 4 for all - but anyway
+chr <- as.numeric(gsub('chr', '', sapply(strsplit(rownames(met), ':'), function(x) return(x[1]))))
+pos <- as.numeric(sapply(strsplit(rownames(met), ':'), function(x) return(x[2])))
+met <- cbind(chr, pos, met)
+```
+
+
+```{r}
+meta$cell <- sprintf('%s.WCG', meta$imet)
+rownames(meta) <- meta$cell
+tryCatch({
+    ew <- heightEntropy(metTable = met,
+                        cellIds = meta,
+                        aggregateOn = 'source_name_ch1')
+}, error = function(x) print(x))
+```
+
 
 # sessionInfo
 
