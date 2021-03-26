@@ -28,7 +28,8 @@ library(TxDb.Mmusculus.UCSC.mm9.knownGene)
 library(GEOquery)
 library(Matrix)
 ## library(mltools) # just for sparsify()
-library(readxl) # for ICRs import 
+library(readxl) # for ICRs import
+library(annotatr)
 ```
 
 ```{r}
@@ -176,28 +177,130 @@ icrs <- as.data.frame(icrs)
 
 # Calculate entropies
 
-Downsampling data to chr4 for testing purposes
+Downsampling data to 1e4 CpGs from chr4 for testing purposes
 
 ```{r}
-met <- as.matrix(merged[grep('chr4:', rownames(merged)),])
+## the coercion is because of the MM export : `merged` is a dgCMatrix now
+metTable <- as.data.table(as.data.frame(as.matrix(head(merged[grep('chr4:', rownames(merged)),],
+                                                       1e4))))
 
-## this is quite absurd, it's 4 for all - but anyway
+## this is quite absurd, it's 4 for all - but kept like this for eventually longer runs
 chr <- as.numeric(gsub('chr', '', sapply(strsplit(rownames(met), ':'), function(x) return(x[1]))))
 pos <- as.numeric(sapply(strsplit(rownames(met), ':'), function(x) return(x[2])))
-met <- cbind(chr, pos, met)
+metTable <- cbind(chr, pos, met)
 ```
 
 
 ```{r}
-meta$cell <- sprintf('%s.WCG', meta$imet)
+meta$cell <- sprintf('%s.WCG', meta$id)
 rownames(meta) <- meta$cell
+
+## plus deleting any metadata for cells not present at the meth table
+
+meta <- meta[meta$cell %in% colnames(met),]
+
+```
+
+Binning the metTable in blocks of 100 CpGs each
+
+```{r}
+## weird binning here
+metTable$bin <- rep(1: (nrow(metTable)/100), each = 100)
+```
+
+```{r}
 tryCatch({
-    ew <- heightEntropy(metTable = met,
-                        cellIds = meta,
-                        aggregateOn = 'source_name_ch1')
+    seh <- heightShannonEn(metTable = metTable,
+                           cellIds = meta$cell,
+                           aggregateOn = 'bin')
 }, error = function(x) print(x))
 ```
 
+
+```{r}
+
+## this crashes
+tryCatch({
+    tew <- widthKeepSampEn(metTable = metTable,
+                          cellIds = meta$cell,
+                          nTempsBin = 32,
+                          templateDim = 2,
+                          tiledBinning = TRUE)
+}, error = function(x) print(x))
+```
+
+```{r}
+## crashes too
+tryCatch({
+    mhl <- widthMHL(metTable = metTable, cellIds = meta$cell)
+                         
+}, error = function(x) print(x))
+```
+
+
+# Get annotations
+
+```{r}
+ah <- AnnotationHub()
+
+txdb <- TxDb.Mmusculus.UCSC.mm9.knownGene
+proms <- promoters(txdb)[seqnames(promoters(txdb)) == "chr4"]
+genes <- genes(txdb)[seqnames(genes(txdb)) == "chr4"]
+
+## repeat masker
+rmsk <- query(ah, c("RepeatMasker", "mm9"))[['AH6155']]
+trna <- query(ah, c("tRNA Genes", "mm9"))[['AH6099']]
+mirna <- query(ah, c("miRNA", "mm9"))[['AH6101']]
+
+## cpgislands
+cpgi <- query(ah, c("CpG Islands", "mm9"))[['AH6117']]
+
+## evolutionarily conserved protein-coding exons
+exoniphy <- query(ah, c("Exoniphy", "mm9"))[['AH6098']]
+```
+
+Next, shall we overlap each annotation layer against the entropies and use the matches as the bins? Or rather fixed-window-bin the genome and overlap against these annotations?
+
+Rather, use annotatr; TODO add ICRs, PMDs, TFBS scans by FIMO etc
+
+```{r}
+annots <- grep('mm9', builtin_annotations(), value = TRUE)
+
+annotations <- build_annotations(genome = 'mm9', annotations = annots)
+```
+
+Transform the current entropy run entropies into GR?
+
+```{r}
+## entropy outputs have no coordinates: a mapping bin:coordinates is needed
+##  but the bin might be not contiguous... maybe one of the methods run modes should be a
+##  genome scan with a fixed number of windows and an univocal translation to coordinates?
+
+## ew_gr <- makeGRangesFromDataFrame(metTable,
+##                                   keep.extra.columns = TRUE,
+##                                   ignore.strand = FALSE,
+##                                   seqinfo = NULL,
+##                                   seqnames.field = "seqnames",
+##                                   start.field = "bin_start",
+##                                   end.field = c("bin_end"),
+##                                   starts.in.df.are.0based = FALSE)
+
+```
+
+
+```{r, eval = FALSE}
+stop('till here')
+
+dm_annotated = annotate_regions(
+    regions = dm_regions,
+    annotations = annotations,
+    ignore.strand = TRUE,
+    quiet = FALSE)
+# A GRanges object is returned
+print(dm_annotated)
+
+# Build the annotations (a single GRanges object)
+```
 
 # sessionInfo
 
