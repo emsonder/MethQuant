@@ -28,7 +28,6 @@ sourceCpp("./C++/mhl.cpp")
   templates[,tempM:=paste(.SD, sep="", collapse=""), by=temp_start, .SDcols=tempCols[1:m]]
   templates[,tempMP:=paste(.SD, sep="", collapse=""), by=temp_start, .SDcols=tempCols[1:(m+1)]]
   
-  
   return(templates)
 }
 
@@ -99,15 +98,39 @@ widthKeepSampEn <- function(metTable,
       setkey(bins, chr, bin_start, bin_end)
       cellTable[,start_pos:=pos]
       cellTable[,end_pos:=pos]
-      metLevel <- foverlaps(cellTable, bins,
-                            by.x=c("chr", "start_pos", "end_pos"),
-                            by.y=c("chr", "bin_start", "bin_end"))
-      metLevel <- metLevel[!is.na(bin),.(met_level_width=mean(rate, na.rm=T),
-                                         chr=unique(chr)),
-                           by=bin]
+      metLevelBin <- foverlaps(cellTable, bins,
+                               by.x=c("chr", "start_pos", "end_pos"),
+                               by.y=c("chr", "bin_start", "bin_end"),
+                               type="any")
+      metLevelBin <- metLevelBin[!is.na(bin),
+                                 .(met_level_width_bin=mean(rate, na.rm=T),
+                                   chr=unique(chr)),
+                                 by=bin]
       
-      # Add methylation rate to templates
-      templates <- merge(templates, metLevel, 
+      # Calculate methylation rate for templates
+      setkey(templates, chr, temp_start, temp_end)
+      
+      # first to prevent that CpGs are counted more than once (as templates move by one position)
+      metLevelTemps <- foverlaps(cellTable, templates[,c("chr", "temp_start", 
+                                                         "temp_end", "bin"), 
+                                                      with=F],
+                                 by.x=c("chr", "start_pos", "end_pos"),
+                                 by.y=c("chr", "temp_start", "temp_end"),
+                                 mult="first",
+                                 type="any",
+                                 nomatch=NULL)
+      metLevelTemps <- metLevelTemps[!is.na(bin),
+                                     .(met_level_width_temp=mean(rate, na.rm=T),
+                                       nCpGs_temps=.N,
+                                       chr=unique(chr)),
+                                     by=bin]
+      
+      # Add methylation rates to templates
+      templates <- merge(templates, metLevelBin, 
+                         by.x=c("chr", "bin"),
+                         by.y=c("chr", "bin"),
+                         all.x=T, all.y=F)
+      templates <- merge(templates, metLevelTemps, 
                          by.x=c("chr", "bin"),
                          by.y=c("chr", "bin"),
                          all.x=T, all.y=F)
@@ -117,7 +140,9 @@ widthKeepSampEn <- function(metTable,
                                                bin_width=unique(bin_width),
                                                bin_start=min(temp_start),
                                                bin_end=max(temp_end),
-                                               met_level_width=unique(met_level_width),
+                                               met_level_width_bin=unique(met_level_width_bin),
+                                               met_level_width_temp=unique(met_level_width_temp),
+                                               nCpGs_temps=unique(nCpGs_temps),
                                                A=unique(A),
                                                B=unique(B),
                                                chr=unique(chr)), by=bin]
@@ -135,17 +160,46 @@ widthKeepSampEn <- function(metTable,
       templates[,A:=frollapply(tempMP_fac, nTempsBin/2, 
                                function(temp){sum(choose(table(temp), 2))},
                                align="center")]
+      templates[,bin_start:=shift(temp_start, nTempsBin/2, type="lag")]
+      templates[,bin_end:=shift(temp_end, nTempsBin/2, type="lead")]
+      templates[,bin:=pos]
       
       # Sample Entropy
       templates[,width_sampEn:=-log(A/B)]
       
-      # Calculate methylation rate
-      cellTable[,met_level_width:=frollmean(rate,n=nTempsBin/2, na.rm=T,  align="center")]
+      # Calculate methylation rate for Bins
+      bins <- templates[!is.na(bin_start) & !is.na(bin_end),
+                        .(bin_start=bin_start,
+                          bin_end=bin_end,
+                          chr=unique(chr)), 
+                        by=bin]
       
-      templates <- merge(templates, cellTable[,c("chr", "pos", "met_level_width")], 
-                         by=c("chr", "pos"),
-                         all.x=T,
-                         all.y=F)
+      setkey(bins, chr, bin_start, bin_end)
+      cellTable[,start_pos:=pos]
+      cellTable[,end_pos:=pos]
+      metLevelBin <- foverlaps(cellTable, bins,
+                               by.x=c("chr", "start_pos", "end_pos"),
+                               by.y=c("chr", "bin_start", "bin_end"))
+      metLevelBin <- metLevelBin[!is.na(bin),
+                                 .(met_level_width_bin=mean(rate, na.rm=T),
+                                   chr=unique(chr)),
+                                 by=bin]
+      
+      templates <- merge(templates, metLevelBin, 
+                         by.x=c("chr", "bin"),
+                         by.y=c("chr", "bin"),
+                         all.x=T, all.y=F)
+      
+      # Calculate methylation rate for templates
+      
+      # biased! & refactor!
+      templates[,met_level_width_temp:=(get("0")+get("1")+get("2"))/3, 
+                by=seq_len(nrow(templates))]
+      templates[,met_level_width_temp:=frollapply(met_level_width_temp, 
+                                                  nTempsBin/2, 
+                                                  function(met_level_width_temp){
+                                                    mean(met_level_width_temp)},
+                                                  align="center")]
       
       # CI Calculation (not exact!)
       templates[,width_SampEn_CI_margin:=sd(rate)*qt(0.975,df=B-1)/sqrt(B)]
@@ -156,7 +210,8 @@ widthKeepSampEn <- function(metTable,
                                                "width_sampEn", 
                                                "width_SampEn_CI_margin",
                                                "bin_width", 
-                                               "met_level_width")]
+                                               "met_level_width_bin",
+                                               "met_level_width_temp")]
     }
   }
   
@@ -242,11 +297,12 @@ heightShannonEn <- function(metTable, cellIds, aggregateOn="bin"){
   # several annotations per position
   cols <- c("chr", "pos", aggregateOn)
   metTableLong[complete.cases(rate), 
-               height_entropy:=shannonEnDiscrete(round_any(rate, 0.5)), 
+               height_entropy:=shannonEnDiscrete(round_any(rate, 0.5)),
                by=cols]
-  
-  
   metTableLong[complete.cases(rate), nCpGs:=.N, by=cols]
+  
+  # Normalize Height Entropy
+  metTableLong[,height_entropy:=(1/log2(nCpGs+1))*height_entropy]
   
   # Aggregate
   if(is.null(aggregateOn)) aggregateOn <- c("chr", "pos")
@@ -314,3 +370,4 @@ widthShannonEn <- function(metTable, cellIds,
   
   return(widthEntropies)
 }
+
