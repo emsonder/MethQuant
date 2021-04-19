@@ -86,8 +86,10 @@ widthKeepSampEn <- function(metTable,
       # Sample Entropy
       templates[,width_sampEn:=-log(A/B), by=bin]
       
-      # CI Calculation (not exact!)
-      templates[,width_SampEn_CI_margin:=sd(rate)*qt(0.975,df=B-1)/sqrt(B),by=bin]
+      # CI Calculation
+      templates[,sd_matches:=sd(c(rep(1,A[1]),rep(0,B[1]-A[1]))),by=bin]
+      templates[,width_SampEn_CI_margin:=sd_matches*qt(0.975,df=B-1)/sqrt(B),
+                by=bin]
       templates[,bin_width:=max(temp_end)-min(temp_start), by=bin]
       
       # Calculate methylation rate for Bins
@@ -201,8 +203,12 @@ widthKeepSampEn <- function(metTable,
                                                     mean(met_level_width_temp)},
                                                   align="center")]
       
-      # CI Calculation (not exact!)
-      templates[,width_SampEn_CI_margin:=sd(rate)*qt(0.975,df=B-1)/sqrt(B)]
+      # CI Calculation
+      templates <- subset(templates, !is.na(A) & !is.na(B))
+      templates[,sd_matches:=sd(c(rep(1,A),rep(0,B-A))),
+                 by=seq_len(nrow(templates))]
+      templates[,width_SampEn_CI_margin:=sd_matches*qt(0.975,df=B-1)/sqrt(B),
+                 by=seq_len(nrow(templates))]
       templates[,bin_width:=max(temp_end)-min(temp_start)]
       
       widthEntropies[[cellId]] <- templates[,c("chr", "pos", 
