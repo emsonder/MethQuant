@@ -52,6 +52,7 @@ calcCrossSampEn <- function(metTable,
     
     templatesSet[[cellId]] <- .getTemplates(cellTable, m)
   }
+  
   templatesSet <- rbindlist(templatesSet, idcol="cell_id")
 
   
@@ -65,7 +66,8 @@ calcCrossSampEn <- function(metTable,
                             annotationTable,
                             by.x=c("chr", "temp_start", "temp_end"),
                             by.y=c("chr", "start", "end"),
-                            type="within")
+                            type="within",
+                            nomatch=NULL)
 
   templatesSubset <- subset(templatesSet, !is.na(name))
   templatesSubset[,n_temp:=.N, by=c("cell_id", "name")]
@@ -76,8 +78,13 @@ calcCrossSampEn <- function(metTable,
   }
   
   # Calculate pairwise matches and aggregate into Dissimilarity table
+  
+
+  # Add some checks!
   disSimTable <- templatesSubset[
     , {
+      if(length(unique(cell_id)) > 2)
+      {
       cellComb <- data.table(t(combn(unique(cell_id), 2)))
       names(cellComb) <- c("cell_x", "cell_y")
       cellComb[
@@ -97,12 +104,15 @@ calcCrossSampEn <- function(metTable,
         }
         , by = .(cell_x, cell_y)
       ]
+      }
     }
     , by = .(name)
   ]
 
-  disSimTable[,cross_SampEn:=-log(A/B)]
-  disSimTable[,comp:=paste(cell_x, cell_y, sep="-")]
+  if(nrow(disSimTable) >0){
+    disSimTable[,cross_SampEn:=-log(A/B)]
+    disSimTable[,comp:=paste(cell_x, cell_y, sep="-")]
+  }
   
   return(disSimTable)
 }
