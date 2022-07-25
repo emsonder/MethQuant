@@ -53,7 +53,8 @@ widthKeepSampEn <- function(metTable,
                             cellIds, 
                             nTempsBin=32,
                             templateDim=2,
-                            tiledBinning=T){
+                            tiledBinning=T,
+                            costumBinning=F){
   
   m <- templateDim
   
@@ -61,7 +62,17 @@ widthKeepSampEn <- function(metTable,
   widthEntropies <- list()
   for(cellId in cellIds)
   {
-    columns <- c("pos", "chr", cellId)
+
+    # in case of costum binning 
+    if(!costumBinning)
+    {
+      columns <- c("pos", "chr", cellId)
+    }
+    else
+    {
+      columns <- c("pos", "chr", "bin", cellId)
+    }
+    
     
     cellTable <- metTable[,..columns]
     setnames(cellTable, cellId, "rate")
@@ -73,11 +84,17 @@ widthKeepSampEn <- function(metTable,
     # Construct templates
     templates <- .getTemplates(cellTable, m)
     
+    if(nrow(templates)==0) next
+    
     if(tiledBinning)
     {
       # Binning
       nTemps <- nrow(templates)
-      templates[, bin:=fixedBinning(nTemps, nTempsBin)] 
+      
+      if(!costumBinning)
+      {
+        templates[, bin:=fixedBinning(nTemps, nTempsBin)]
+      }
     
       # count pairwise matches for both options
       templates[,B:=sum(choose(table(tempM), 2)), by=bin]
@@ -145,6 +162,7 @@ widthKeepSampEn <- function(metTable,
                                                met_level_width_bin=unique(met_level_width_bin),
                                                met_level_width_temp=unique(met_level_width_temp),
                                                nCpGs_temps=unique(nCpGs_temps),
+                                               n_temps=.N,
                                                A=unique(A),
                                                B=unique(B),
                                                chr=unique(chr)), by=bin]
@@ -292,7 +310,8 @@ widthMHL <- function(metTable, cellIds)
 #'@param aggregateOn Column of metTable defining the genomic subsequences to 
 #'aggregate the entropy scores on. 
 #'@return data.table with Shannon Entropies for the genomic subsequences
-heightShannonEn <- function(metTable, cellIds, aggregateOn="bin"){
+heightShannonEn <- function(metTable, cellIds, aggregateOn="bin", 
+                            positionWise=F){
   
   # Reshape to long 
   metTableLong <- melt(metTable, id.vars=c("pos", "chr", aggregateOn),
@@ -301,19 +320,36 @@ heightShannonEn <- function(metTable, cellIds, aggregateOn="bin"){
   
   # Calculate Shannon Entropy per position & aggregateOn in case there are 
   # several annotations per position
-  cols <- c("chr", "pos", aggregateOn)
-  metTableLong[complete.cases(rate), 
-               height_entropy:=shannonEnDiscrete(round_any(rate, 0.5)),
-               by=cols]
-  metTableLong[complete.cases(rate), nCpGs:=.N, by=cols]
+  if(positionWise)
+  {
+    cols <- c("chr", "pos", aggregateOn)
+    metTableLong[complete.cases(rate), 
+                 height_entropy:=shannonEnDiscrete(round_any(rate, 0.5)),
+                                         by=cols]
+    metTableLong[complete.cases(rate), nCpGs:=.N, by=cols]
+  }
+  else
+  {
+      metTableLong[complete.cases(rate), 
+                   height_entropy:=shannonEnDiscrete(round_any(rate, 0.5)),
+                   by=aggregateOn]
+      metTableLong[complete.cases(rate), nCpGs:=.N, by=aggregateOn]
+      metTableLong[complete.cases(rate), 
+                   nStates:=length(unique(rate)), 
+                   by=aggregateOn]
+  }
   
   # Normalize Height Entropy
-  metTableLong[,height_entropy:=(1/log2(nCpGs+1))*height_entropy]
+  #metTableLong[,height_entropy:=(1/log2(nCpGs+1))*height_entropy]
+  
+  # normalize by number of states
+  metTableLong[,height_ShannonEn:=(1/log2(nStates+1))*height_entropy, 
+               by=aggregateOn]
   
   # Aggregate
   if(is.null(aggregateOn)) aggregateOn <- c("chr", "pos")
   
-  heightEntropies <- metTableLong[,.(height_entropy=mean(height_entropy, na.rm=T),
+  heightEntropies <-  metTableLong[,.(height_ShannonEn=mean(height_ShannonEn, na.rm=T),
                                      mean_nCpGs_height=mean(nCpGs, na.rm=T),
                                      met_level_height=mean(rate, na.rm=T),
                                      median_pos=as.integer(median(pos))), 
