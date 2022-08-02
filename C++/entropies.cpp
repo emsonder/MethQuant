@@ -64,7 +64,7 @@ std::map<int, double> prob(NumericVector x, bool discretize){
 // [[Rcpp::export]]
 // Shannon Entropy: 
 // http://people.math.harvard.edu/~ctm/home/text/others/shannon/entropy/entropy.pdf
-double shannonEnDiscrete(NumericVector x){
+double shannonEnDiscrete(NumericVector x, bool normalize){
   double entropy=0;
   int n = x.size();
   
@@ -86,5 +86,61 @@ double shannonEnDiscrete(NumericVector x){
     if (p_x>0) entropy-=p_x*log2(p_x);
     it++;
   }
+  
+  if(normalize)
+  {
+    entropy=entropy/probs.size();
+  }
+  
   return entropy;
+}
+
+// [[Rcpp::export]]
+// Sample Entropy:
+// https://journals.physiology.org/doi/full/10.1152/ajpheart.2000.278.6.h2039
+double sampleEn(NumericVector x, int m, double r){
+  int N = x.size();
+  
+  if(N<2)
+  {
+    return R_NaN; 
+  }
+  
+  // Code adapted from: 
+  // http://blog.schochastics.net/post/sample-entropy-with-rcpp/
+  
+  int cm = 0, cm_1 = 0;
+  double tol = 0.0;
+  
+  double sd = calcSD(x);
+  
+  // tolerance
+  tol = sd * r;
+  
+  for (unsigned int i = 0; i < N - m; i++) {
+    for (unsigned int j = i + 1; j < N-m; j++) {      
+      bool eq = true;
+      
+      // Chebyshev distance criteria
+      for (unsigned int k = 0; k < m; k++) {
+        if (abs(x[i+k] - x[j+k]) > tol) {
+          eq = false;
+          break;
+        }
+      }
+      if (eq) cm++;
+      
+      // check for length m+1
+      int k = m;
+      if (eq && abs(x[i+k] - x[j+k]) <= tol)
+        cm_1++;
+    }
+  }
+  
+  if (cm > 0 && cm_1 > 0)
+    return log((double)cm / (double)cm_1);
+  else if(cm>0)
+    return R_PosInf; // or NAN
+  else
+    return R_NaN; // This case cannot happen!
 }
