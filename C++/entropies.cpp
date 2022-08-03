@@ -30,15 +30,15 @@ double calcSD(NumericVector x)
   return sqrt(sq_sd);
 }
 
-
+// [[Rcpp::export]]
 std::map<int, double> prob(NumericVector x, bool discretize){
   int n = x.size();
   
   
   // Discretize: Scale and tranform to int to avoid the use of doubles as keys.
-  if(discretize)
+  if(!discretize)
   {
-    std::transform(x.begin(), x.end(), x.begin(), [](double d) { return (int)(d*100);});
+    std::transform(x.begin(), x.end(), x.begin(), [](double d) { return (int)(d*100000);});
   }
   
   std::map<int, int> counts; 
@@ -60,11 +60,10 @@ std::map<int, double> prob(NumericVector x, bool discretize){
   return probs; 
 }
 
-
 // [[Rcpp::export]]
 // Shannon Entropy: 
 // http://people.math.harvard.edu/~ctm/home/text/others/shannon/entropy/entropy.pdf
-double shannonEnDiscrete(NumericVector x, bool normalize){
+double shannonEnDiscrete(NumericVector x, bool normalize, bool discretize){
   double entropy=0;
   int n = x.size();
   
@@ -75,15 +74,14 @@ double shannonEnDiscrete(NumericVector x, bool normalize){
   
   // Code adapted from: 
   // https://stackoverflow.com/questions/20965960/shannon-entropy
-  
-  std::map<int, double> probs = prob(x, true);
-  
+  std::map<int, double> probs = prob(x, discretize);
+
   typename std::map<int, double>::iterator it;
   // Calculate Shannon Entropy
   it = probs.begin();
   while(it != probs.end()){
     double p_x = it->second;
-    if (p_x>0) entropy-=p_x*log2(p_x);
+    if (p_x>0) entropy-=p_x*log(p_x);
     it++;
   }
   
@@ -115,7 +113,8 @@ double sampleEn(NumericVector x, int m, double r){
   double sd = calcSD(x);
   
   // tolerance
-  tol = sd * r;
+  // tol = sd * r;
+  tol = r;
   
   for (unsigned int i = 0; i < N - m; i++) {
     for (unsigned int j = i + 1; j < N-m; j++) {      

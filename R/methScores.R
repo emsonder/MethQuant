@@ -72,15 +72,18 @@ methScores <- function(data, # can be GRanges, or bsseq, or data.table / data.fr
       #methData[, bin:=cut(pos, seq(min(get(posCol)), 
       #                             max(get(posCol))+binSize, binSize), 
       #                    include.lowest=TRUE), by=seqCol]
-      
-      methData[, bin:=fixedBinning(max(get(posCol)), binSize, 
-                                   get(posCol), get(seqCol)), 
-               by=seqCol]
+      methData[,maxPos:=max(get(posCol)), by=seqCol]
+      methData[, bin:=.binning(max(get(posCol)), binSize, 
+                              get(posCol), get(seqCol),
+                              mode="tiled"), 
+                 by=seqCol]
+      methData$maxPos <- NULL
     }
     else if(binMode=="fixed")
     {
-      methData[, bin:=fixedBinning(nrow(methData), binSize, 
-                                   get(posCol), get(seqCol)), 
+      methData[, bin:=.binning(.N, binSize, 
+                              get(posCol), get(seqCol),
+                              mode="fixed"), 
                  by=seqCol]
     }
     else if(binMode=="moving")

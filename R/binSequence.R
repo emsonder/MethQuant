@@ -10,19 +10,43 @@ tileBinning <- function(dt, binSize)
 }
 
 # Fixed Binning approach (fixed number of CpGs per bin)
-fixedBinning <- function(nCpGs, nCpGsBin, pos, chr)
+.binning <- function(nTot, nBin, pos, chr, mode)
 {
-  nIntervals <- ceiling(nCpGs/nCpGsBin)
+  coords <- data.table(start=pos, end=pos)
+  nIntervals <- ceiling(nTot/nBin)
+  bins <- rep(1:nIntervals, each=nBin)
   
-  bins <- sapply(1:nIntervals, function(i){rep(i, nCpGsBin)})
-  bins <- bins[1:nCpGs]
+  #bins <- sapply(1:nIntervals, function(i){rep(i, nBin)})
   
-  bins <- data.table(bin=bins, pos=pos, chr)
-
-  bins[,bin_start:=min(pos), by=c("bin", "chr")]
-  bins[,bin_end:=max(pos), by=c("bin", "chr")]
+  if(mode=="tiled")
+  {
+    bins <- data.table(start=1:nTot, end=1:nTot, bin=bins)
+    bins[,bin_start:=min(start), by=c("bin")]
+    bins[,bin_end:=max(start), by=c("bin")]
+    
+    setkey(bins, bin_start, bin_end)
+    bins <- foverlaps(coords, 
+                      bins, 
+                      by.x=c("start", "end"),
+                      by.y=c("bin_start", "bin_end"),
+                      type="within",nomatch=NULL, mult="last")
+    bins <- bins[,c("bin_start", "bin_end", "bin"), with=FALSE]
+    #setnames(bins, "start", "pos")
+  }
+  else if(mode=="fixed")
+  {
+    bins <- data.table(bin=bins[1:nTot], pos=pos)
+    bins[,bin_start:=min(pos), by=c("bin")]
+    bins[,bin_end:=max(pos), by=c("bin")]
+  }
+  
   bins[, bin:=paste0("(", chr, ",", bin_start,",", bin_end, "]")]
   bins$bin <- factor(bins$bin, levels=unique(bins$bin))
+  
+  # tiled binning
+  #methData[, bin:=cut(pos, seq(min(get(posCol)), 
+  #                             max(get(posCol))+binSize, binSize), 
+  #                    include.lowest=TRUE), by=seqCol]
 
   return(bins$bin)
 }

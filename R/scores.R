@@ -17,8 +17,8 @@
   cellTable[,(tempCols):=lapply(0:m, function(i) shift(rate, n=i, type="lead"))]
   
   templates <- cellTable[!is.nan(temp_start),]
-  templates[,tempM:=paste(.SD, sep="", collapse=""), by=temp_start, .SDcols=tempCols[1:m]]
-  templates[,tempMP:=paste(.SD, sep="", collapse=""), by=temp_start, .SDcols=tempCols[1:(m+1)]]
+  templates[,tempM:=paste(.SD, sep="", collapse=","), by=temp_start, .SDcols=tempCols[1:m]]
+  templates[,tempMP:=paste(.SD, sep="", collapse=","), by=temp_start, .SDcols=tempCols[1:(m+1)]]
   
   return(templates)
 }
@@ -28,17 +28,19 @@
   # Count templates of length m in proximity r
   tempCounts <- as.data.table(table(templates))
   temp <- sapply(tempCounts$templates, 
-                  function(x){as.numeric(unlist((tstrsplit(x, ""))))})
+                  function(x){as.numeric(unlist((tstrsplit(x, ","))))})
   
   # Get distances between templates
+  tempComb <- rbind(t(combn(tempCounts$templates, 2)), cbind(tempCounts$templates, 
+                                                             tempCounts$templates))
   tempDist <- as.matrix(dist(t(temp), method=measure))
-  tempDist <- as.data.table(tempDist, keep.rownames="from")
-  tempDist <- suppressWarnings(melt(tempDist, variable.name="to", value.name="dist"))
+  tempDist <- data.table(tempComb, dist=tempDist[tempComb])
+  colnames(tempDist) <- c("from", "to", "dist")
   
   # filter by radius
-  tempDist <- subset(tempDist, dist<r)
+  tempDist <- subset(tempDist, dist<=r)
 
-  # Merge 
+  # Merge -> remove duplicates
   tempPairs <- merge(tempDist, tempCounts, by.y=c("templates"), by.x=c("from"))
   setnames(tempPairs, "N", "N_from")
   tempPairs <- merge(tempPairs, tempCounts, by.y=c("templates"), by.x=c("to"))
@@ -77,20 +79,28 @@
 }
 
 sampEn <- function(data, 
-                   cols,
-                   block,
-                   pos="pos",
+                   cols=NULL,
+                   block=NULL,
+                   pos=NULL,
                    m=2,
                    naMode=c("remove", "keep"),
                    r=NULL,
+                   measure="maximum",
                    nCores=1){
+  data <- as.data.table(data)
   
   # ensure ordering
+  if(is.null(pos)) pos <- 1:nrow(data)
   if(is.character(pos)) pos <- c(data[,pos])
+  data$pos <- pos
+  setorderv(data, c(block, "pos"))
+  
+  if(is.null(cols)) cols <- setdiff(colnames(data), c("pos", block))
 
   if(!is.null(block)){
     if(naMode=="keep"){
-      scores <- data[, mclapply(.SD, .keepSampEn, pos, m, r, mc.cores=nCores), 
+      scores <- data[, mclapply(.SD, .keepSampEn, pos, m, r, 
+                                measure, mc.cores=nCores), 
                        by=block, .SDcols=cols] # Reduce(c,
     }
     else if(naMode=="remove")
@@ -103,7 +113,8 @@ sampEn <- function(data,
   }
   else{
     if(naMode=="keep"){
-      scores <- data[, mclapply(.SD, .keepSampEn, pos, m, r, mc.cores=nCores),
+      scores <- data[, mclapply(.SD, .keepSampEn, pos, m, r, 
+                                measure, mc.cores=nCores),
                        .SDcols=cols]
     }
     else if(naMode=="remove")
@@ -120,21 +131,23 @@ sampEn <- function(data,
 }
 
 
-shannonEn <- function(data, cols=NULL, block=NULL, normalize=TRUE, nCores=1)
+shannonEn <- function(data, cols=NULL, block=NULL, normalize=TRUE, 
+                      discretize=TRUE, nCores=1)
 {
   data <- as.data.table(data)
-  
-  if(is.null(cols)) cols <- colnames(data)
+  if(is.null(cols)) cols <- setdiff(colnames(data), block)
   
   if(!is.null(block)){
     scores <- data[,mclapply(.SD, function(x){shannonEnDiscrete(na.omit(x), 
-                                                                normalize)},
+                                                                normalize, 
+                                                                discretize)},
                            mc.cores=nCores), 
                     by=c(block), .SDcols=cols]
     }
   else{
     scores <- data[,mclapply(.SD, function(x){shannonEnDiscrete(na.omit(x), 
-                                                              normalize)},
+                                                                normalize,
+                                                                discretize)},
                            mc.cores=nCores), 
                    .SDcols=cols]
   }
