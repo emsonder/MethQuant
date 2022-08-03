@@ -1,13 +1,36 @@
-# Wrapper function for qu
+# Wrapper function for quantifying methylation patterns
 #'@author: Emanuel Sonder
 
-#TODO: 
-# - ShannonEn height axis scores vs bins
-# - data naming & variable naming 
-# - cell type /sample type column
-
-
-
+#' Wrapper function to calculate different methylation scores. 
+#' 
+#' Wrapper function to calculate different entropy scores for different dimensions
+#' of methylation data (i.e. inter-cell/height axis (h) or intra-cell/width axis (w)). 
+#' 
+#' @name methScores
+#' @rdname methScores
+#' @param data methylation data, can be either a GRanges object with the methylated levels
+#' in the meta columns, a BSseq object, or a data.table/data.frame with 
+#' the methylation levels of a sample in the columns, a position (posCols) and sequence name column (seqCol).
+#' @param score score function to use. Scores currently implemented are sampEn and shannonEn
+#' @param axis either "w" or "h". The axis "w" specifies the calculation of the scores across the (CpG) sequence of 
+#' a single cell/sample. The axis "h" specifies calculation of the scores across cells for a position/region of interest.
+#' @param posCol Column specifying the position of a CpG if input is a data.frame/data.table.
+#' @param seqCol  Column specifying the chromosome name of a CpG if input is a data.frame/data.table.
+#' @param binMode Mode for binning the sequence. Mode "costum" if regions of interest are provided via
+#' the regions argument. Mode "tiled" if the sequence should be split in tiled bins based on the positions. 
+#' Mode "fixed" if the sequence should be split up in bins containing a fixed number of CpGs. 
+#' Modes fixed and tiled differ in the sense that tiled bins the sequences in equally-sized stretches 
+#' while fixed ensures that the bins contain the same number of CpGs. 
+#' @param regions If binMode="costum" GRanges object which contains the regions of interest
+#' @param startCol Name of the startCol (will get removed)
+#' @param endCols Name of the endCol (will get removed)
+#' @param binSize Size of the bins, either the length of the stretches 
+#' in nucleotides (binMode="tiled") or in CpGs (binMode="fixed").
+#' @param ... args specific for the score function used
+#' @return If data.table/data.frame or GRanges objects are provided as an input a data.table with the scores
+#' for the bins across the axis of interest are provided. If a BSseq object is provided the scores get added to the
+#' colData (if axis="w") or the metadata (if axis="h").
+#' @export
 methScores <- function(data, # can be GRanges, or bsseq, or data.table / data.frame
                        score=c("sampEn", "shannonEn"), # one of the implemented scores ? but how to ensure correctness ? 
                        axis=c("w", "h"),

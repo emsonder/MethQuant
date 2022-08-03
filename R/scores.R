@@ -1,4 +1,5 @@
-#dt[,bplapply(.SD, fun), by=c(x,y,z), BPPARAM), .SDcols=ids]
+#' Quantification functions 
+#' @author Emanuel Sonder
 
 .getTemplates <- function(x, pos, m){
   
@@ -77,7 +78,36 @@
   
   return(sampEn)
 }
-
+#' Sample Entropy function
+#' 
+#' Implementation of Sample Entropy (Richman and Moorman, 2000,
+#' https://journals.physiology.org/doi/full/10.1152/ajpheart.2000.278.6.h2039).
+#' The complexity measure Sample Entropy is obtained by determining the negative 
+#' logarithm of the number of matching subseries/templates of length m+1 (A) and length m (B).
+#' Matching subseries/templates are within a distance of r each other.
+#' 
+#' @name sampEn
+#' @rdname sampEn
+#' @param data data for which to calculate Sample Entropies. Format expected is 
+#' a data.table with the numerical data for which to calculate the Sample Entropies
+#' in the columns.
+#' @param cols vector with names of the columns for which to calculate the Sample Entropy. 
+#' @param block If the Sample Entropies should be calculated for subseries of the 
+#' original data, block is the name of the column(s) which indicate the subseries. 
+#' @param pos Numerical column which gives the positions of the elements (not necessarily needed, might be removed)
+#' @param m Length of the subseries/templates
+#' @param naMode How to treat NAs. Mode "remove" all NAs get removed from the series and Sample Entropy
+#' is calculated for the series with removed NAs. Mode "keep" subseries/templates get constructed such that no
+#' subseries/templates is intersected by a NA.
+#' (KeepSampEn, Dong et al. 2019, https://www.ncbi.nlm.nih.gov/pmc/articles/PMC7514754/)
+#' @param r distance threshold (tolerance) for which subseries/templates are counted as matching pairs. 
+#' If r=NULL, r is set to 0, thus only exact matches are considered. 
+#' Makes sense if the data has only few states (e.g. binary series).
+#' @param measure distance measure to be used, all distance measures of the dist function can be used: 
+#' "euclidean", "maximum", "manhattan", "canberra", "binary" or "minkowski.
+#' @param nCores, number of cores to be used, parallelization happens across the cols. 
+#' @return data.table with entropy scores for the specified columns and subseries
+#' @export
 sampEn <- function(data, 
                    cols=NULL,
                    block=NULL,
@@ -130,7 +160,24 @@ sampEn <- function(data,
   return(scores)
 }
 
-
+#' Shannon Entropy function
+#' 
+#' Implementation of Shannon Entropy 
+#' (Shannon, 1948, http://people.math.harvard.edu/~ctm/home/text/others/shannon/entropy/entropy.pdf)
+#' 
+#' @name shannonEn
+#' @rdname shannonEn
+#' @param data data for which to calculate Shannon Entropies. Format expected is 
+#' a data.table with the numerical data for which to calculate the Shannon Entropies
+#' in the columns.
+#' @param cols vector with names of the columns for which to calculate the Sample Entropy. 
+#' @param block If the Shannon Entropies should be calculated for subseries of the 
+#' original data, block is the name of the column(s) which indicate the subseries. 
+#' @param normalize (TRUE/FALSE) If the shannon entropy should be normalized by the number of states.
+#' @param discretize Should the values be discretized to the next integer
+#' @param nCores, number of cores to be used, parallelization happens across the cols.
+#' @return data.table with entropy scores for the specified columns and subseries
+#' @export
 shannonEn <- function(data, cols=NULL, block=NULL, normalize=TRUE, 
                       discretize=TRUE, nCores=1)
 {
@@ -155,8 +202,4 @@ shannonEn <- function(data, cols=NULL, block=NULL, normalize=TRUE,
   setnames(scores, cols, paste("shannonEn", cols, sep="_"))
   
   return(scores)
-}
-
-mhl <- function(){
-  
 }
