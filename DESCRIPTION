@@ -1,0 +1,25 @@
+Package: MethQuant
+Title: Methylation scores
+Version: 0.0.0.9000
+Authors@R: c(person("Emanuel", "Sonder", "emanuel.sonder@hest.ethz.ch", 
+                     role = c("aut", "cre"),
+                     comment = c(ORCID = "YOUR-ORCID-ID")))
+Author: Emanuel Sonder
+Maintainer: Emanuel Sonder <emanuel.sonder@hest.ethz.c>
+Description: What the package does (one paragraph).
+License: `use_mit_license()`, `use_gpl3_license()` or friends to pick a
+    license
+Encoding: UTF-8
+biocViews:
+LinkingTo: Rcpp
+Depends:
+        data.table,
+        Rcpp (>= 1.0.7),
+        parallel
+Imports: Rcpp (>= 1.0.7),
+         data.table,
+         bsseq,
+         GenomicRanges
+Suggests: testthat
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.2.1

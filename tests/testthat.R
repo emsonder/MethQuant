@@ -7,6 +7,6 @@
 # * https://testthat.r-lib.org/reference/test_package.html#special-files
 
 library(testthat)
-library(smp)
+library(MethQuant)
 
-test_check("smp")
+test_check("MethQuant")
