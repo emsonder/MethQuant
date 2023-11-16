@@ -41,13 +41,13 @@ methScores <- function(data, # can be GRanges, or bsseq, or data.table / data.fr
                        regions=NULL,
                        startCol="start",
                        endCol="end",
-                       binSize=1000
+                       binSize=1000,
                        ...){
 
     # check input arguments
-    if(!(score %in% c("sampEn", "shannonEn", "metLevel", "pdr", "fdrp", "trProb", "smc"))){
-      stop("Please choose one of the following scores: sampEn, shannonEn, metLevel, pdr, fdrp") # maybe add a constants file
-    }
+    score <- match.arg(score,
+                       choices=c("sampEn", "shannonEn", "metLevel", "pdr", "fdrp", "trProb", "smc"), # add constants file
+                       several.ok=TRUE)
 
     # Retrieve the methylation matrix
     if(is(data, "BSseq")){
@@ -131,28 +131,63 @@ methScores <- function(data, # can be GRanges, or bsseq, or data.table / data.fr
       methData <- methData[,c(seqCol, posCol, cellIds, "bin"), with=FALSE]
       #TODO: Ensure ordering
 
-      scoreFun <- get(score) # here use keyword args
       if(axis=="h")
       {
         methData <- melt(methData, id.vars=c(seqCol, "bin", posCol))
         setnames(methData, c("variable", "value"), c("cell_id", "met_level"))
 
-        # could also do specifically not with posCol
-        if(score=="sampEn") block <- c(seqCol, "bin", posCol) else block <- c(seqCol, "bin")
-        scores <- scoreFun(methData, cols=c("met_level"),
-                           block=block, ...)
+        if(length(scores)>1)
+        {
+          allScores <- lapply(score, function(score, ...){
+            scoreFun <- get(score)
+            if(score=="sampEn") block <- c(seqCol, "bin", posCol) else block <- c(seqCol, "bin")
+            s <- scoreFun(methData, cols=c("met_level"),
+                               block=block, ...)
+          })
+          scores <- setDT(
+            unlist(allScores, recursive = FALSE),
+            check.names =FALSE
+          )[]
+          scores <- scores[, .SD, .SDcols = unique(names(scores))]
+        }
+        else
+        {
+          scoreFun <- get(score)
+          if(score=="sampEn") block <- c(seqCol, "bin", posCol) else block <- c(seqCol, "bin")
+          scores <- scoreFun(methData, cols=c("met_level"),
+                             block=block, ...)
+        }
 
-        #scores <- shannonEn(methData, cols=c("met_level"), block=c(seqCol, "bin", posCol))
         setnames(scores, c(paste(score, "met_level", sep=":")),
                          c(paste(score, axis, sep=":")))
       }
       else if(axis=="w")
       {
-        scores <- scoreFun(methData, cols=cellIds,
-                           block=c(seqCol, "bin"), ...)
-
-        scores <- melt(scores, id.vars=c(seqCol, "bin"),
-                       value.name=paste(score, axis, sep=":"))
+        if(length(score)>1)
+        {
+          allScores <- lapply(score, function(score, ...){
+            scoreFun <- get(score)
+            s <- scoreFun(methData, cols=cellIds,
+                          block=c(seqCol, "bin"), ...)
+            s <- melt(s, id.vars=c(seqCol, "bin"),
+                      value.name=paste(score, axis, sep=":"))
+            setorderv(s, cols=c(seqCol, "bin"))
+            s
+          })
+          scores <- setDT(
+            unlist(allScores, recursive = FALSE),
+            check.names =FALSE
+          )[]
+          scores <- scores[, .SD, .SDcols = unique(names(scores))]
+        }
+        else
+        {
+          scoreFun <- get(score) # here use keyword args
+          scores <- scoreFun(methData, cols=cellIds,
+                             block=c(seqCol, "bin"), ...)
+          scores <- melt(scores, id.vars=c(seqCol, "bin"),
+                         value.name=paste(score, axis, sep=":"))
+        }
 
         scores[,sample_id:=tstrsplit(variable, split=":", keep=2)]
         scores$variable <- NULL
@@ -177,13 +212,17 @@ methScores <- function(data, # can be GRanges, or bsseq, or data.table / data.fr
         else if(axis=="w")
         {
           scoreCol <- setdiff(names(scores), c(seqCol, "bin", "sample_id"))
-          scores[,(scoreCol):=as.numeric(scoreCol)]
-          scoresWide <- dcast(scores, bin~sample_id, value.var=scoreCol)
-          colNames <- paste(score, scoresWide$bin, sep="_")
-          scoresWide$bin <- NULL
+          scoresWide <- lapply(scoreCol, function(scoreCol){
 
-          scoresWide <- DataFrame(t(scoresWide))
-          colnames(scoresWide) <- colNames
+            scores[,(scoreCol):=as.numeric(scoreCol)]
+            scoresWide <- dcast(scores, bin~sample_id, value.var=scoreCol)
+            colNames <- paste(score, scoresWide$bin, sep="_")
+            scoresWide$bin <- NULL
+
+            scoresWide <- DataFrame(t(scoresWide))
+            colnames(scoresWide) <- colNames
+          })
+          scoresWide <- do.call("cbind", scoresWide)
 
           colData(data) <- cbind(colData(data), scoresWide)
         }
