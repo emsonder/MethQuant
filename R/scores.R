@@ -119,10 +119,12 @@ sampEn <- function(data,
                    block=NULL,
                    pos=NULL,
                    m=2,
-                   naMode=c("remove", "keep"),
+                   naMode=c("keep", "remove"),
                    r=NULL,
                    measure="maximum",
-                   nCores=1){
+                   nCores=1,
+                   getBg=FALSE,
+                   longFormat=FALSE){
 
   data <- as.data.table(data)
 
@@ -164,7 +166,61 @@ sampEn <- function(data,
     }
   }
 
-  setnames(scores, cols, paste("sampEn", cols, sep="_"))
+  if(getBg)
+  {
+    scores <- .getBackground(data, "sampEn",
+                             scores,
+                             cols=cols,
+                             block=block,
+                             nCores=nCores,
+                             ...)
+  }
+  else if(longFormat & !getBg)
+  {
+    # switch to long
+    scores <- melt(scores, id.vars=block,
+                   value.name=paste("sampEn", axis, sep=":"))
+    setorderv(scores, cols=block)
+  }
+
+  return(scores)
+}
+
+metLevel <- function(data,
+                     cols=NULL,
+                     block=NULL,
+                     pos=NULL,
+                     getBg=FALSE,
+                     longFormat=FALSE,
+                     nCores=1){
+
+  if(!is.null(block))
+  {
+    scores <- data[, mclapply(.SD, function(x){mean(x, na.rm=TRUE)},
+                            mc.cores=nCores), by=block, .SDcols=cols]
+  }
+  else
+  {
+    scores <- data[, mclapply(.SD, function(x){mean(x, na.rm=TRUE)},
+                              mc.cores=nCores), .SDcols=cols]
+  }
+
+  if(getBg)
+  {
+    scores <- .getBackground(data, "metLevel",
+                             scores,
+                             cols=cols,
+                             block=block,
+                             nCores=nCores,
+                             ...)
+  }
+  else if(longFormat & !getBg)
+  {
+    # switch to long
+    scores <- melt(scores, id.vars=block,
+                   value.name=paste("metLevel", axis, sep=":"))
+    setorderv(scores, cols=block)
+  }
 
   return(scores)
 }
@@ -188,7 +244,8 @@ sampEn <- function(data,
 #' @return data.table with entropy scores for the specified columns and subseries
 #' @export
 shannonEn <- function(data, cols=NULL, block=NULL, normalize=TRUE,
-                      discretize=TRUE, nCores=1)
+                      discretize=TRUE, nCores=1,
+                      getBg=FALSE, longFormat=FALSE, ...)
 {
   data <- as.data.table(data)
   if(is.null(cols)) cols <- setdiff(colnames(data), block)
@@ -208,7 +265,260 @@ shannonEn <- function(data, cols=NULL, block=NULL, normalize=TRUE,
                    .SDcols=cols]
   }
 
-  setnames(scores, cols, paste("shannonEn", cols, sep="_"))
+  if(getBg)
+  {
+    scores <- .getBackground(data, "shannonEn",
+                             scores,
+                             cols=cols,
+                             block=block,
+                             nCores=nCores,
+                             ...)
+  }
+  else if(longFormat & !getBg)
+  {
+    # switch to long
+    scores <- melt(scores, id.vars=block,
+                   value.name=paste("shannonEn", axis, sep=":"))
+    setorderv(scores, cols=block)
+  }
 
+  return(scores)
+}
+
+ent <- function(p, norm, ...){
+  if(norm)
+  {
+    etr <- sum(-p*log(p), na.rm=TRUE)/log(length(p))
+  }
+  else
+  {
+    etr <- sum(-p*log(p), na.rm=TRUE)
+  }
+  return(etr)
+}
+
+estTr <- function(x, aggFun=sum, norm=TRUE, ...){
+
+  if(any(!is.na(x)))
+  {
+    x <- as.character(x)
+    fit <- markovchainFit(x, method="mle")
+    trm <- fit$estimate@transitionMatrix
+    score <- aggFun(apply(trm, 1, ent, norm, ...), na.rm=TRUE)
+  }
+  else
+  {
+    score <- as.numeric(NA)
+  }
+
+  return(score)
+}
+
+trProb <- function(data, cols=NULL, block=NULL, nCores=1,
+                   getBg=TRUE, longFormat=TRUE, ...){
+
+  if(is.null(cols)) cols <- setdiff(colnames(data), block)
+
+  if(!is.null(block)){
+    scores <- data[,mclapply(.SD, function(x){estTr(x, ...)},
+                             mc.cores=nCores),
+                   by=c(block), .SDcols=cols]
+  }
+  else{
+    scores <- data[,mclapply(.SD, function(x){estTr(x, ...)},
+                             mc.cores=nCores),
+                   .SDcols=cols]
+  }
+
+  scores[,(cols):=lapply(.SD, as.numeric), .SDcols=cols]
+
+  if(getBg)
+  {
+    scores <- .getBackground(data, "trProb",
+                             scores,
+                             cols=cols,
+                             block=block,
+                             nCores=nCores,
+                             ...)
+  }
+  else if(longFormat & !getBg)
+  {
+    # switch to long
+    scores <- melt(scores, id.vars=block,
+                   value.name=paste("trProb", axis, sep=":"))
+    setorderv(scores, cols=block)
+  }
+
+  return(scores)
+}
+
+.weightDecay <- function(pos,
+                         decay=c("exp", "linear"),
+                         range=200,
+                         maxDist=1000,
+                         shift=1,
+                         minDist=NULL, ...){
+
+  decay <- match.arg(decay, choices=c("exp", "linear"))
+  d <- data.table::shift(pos, type="lead", n=shift)-pos
+
+  if(decay=="exp")
+  {
+      w <- exp(-d/range)
+  }
+  else if(decay=="linear")
+  {
+     w <- (1-d/maxDist)
+  }
+
+  w[w<0] <-0
+
+  if(!is.null(minDist))
+  {
+    w[d<minDist] <- 0
+  }
+
+  return(w)
+}
+
+# for getting the background keep the score constant
+smc <- function(data,
+                cols=NULL,
+                block=NULL,
+                decay="exp",
+                shift=1,
+                nCores=1,
+                getBg=FALSE,
+                longFormat=FALSE, ...){
+
+      pos <- data[["pos"]]
+      w <- .weightDecay(pos, decay=decay, shift=shift, ...)
+
+      if(!is.null(block)){
+      scores <- data[,mclapply(.SD,function(x,w){
+           xs <- data.table::shift(x, type="lead", n=shift)
+           wo <- w
+           wo[is.na(x) | is.na(xs)] <- NA
+
+           if(sum(!is.na(x) & !is.na(xs))>10 & (sum(wo>0, na.rm=TRUE)>10)){
+             s <- as.numeric(sum(wo*as.numeric(x==xs), na.rm=TRUE)/sum(wo, na.rm=TRUE))
+           }
+           else
+           {
+             s <- NA
+           }
+
+           s}, w, mc.cores=nCores), by=c(block), .SDcols=cols]}
+      else
+      {
+        scores <- data[,mclapply(.SD, function(x,w){
+          xs <- data.table::shift(x, type="lead", n=shift)
+          wo <- w
+          wo[is.na(x) | is.na(xs)] <- NA
+
+          if(sum(!is.na(x) & !is.na(xs))>10 & (sum(wo>0, na.rm=TRUE)>10)){
+            s <- as.numeric(sum(wo*as.numeric(x==xs), na.rm=TRUE)/sum(wo, na.rm=TRUE))
+          }
+          else
+          {
+            s <- NA
+          }
+          s}, w, mc.cores=nCores), .SDcols=cols]
+      }
+
+      if(getBg)
+      {
+        scores <- .getBackground(data, "smc",
+                                 scores,
+                                 cols=cols,
+                                 block=block,
+                                 nCores=nCores,
+                                 ...)
+      }
+      else if(longFormat & !getBg)
+      {
+        # switch to long
+        scores <- melt(scores, id.vars=block,
+                       value.name=paste("smc", axis, sep=":"))
+        setorderv(scores, cols=block)
+      }
+
+      return(scores)
+    }
+
+shuffleByPos <- function(x, pos){
+  covPos <- which(!is.na(x))
+  covX <- x[!is.na(x)]
+  covX <- sample(covX, length(covX), replace=FALSE)
+  sX <- rep(NA, length(x))
+  sX[covPos] <- covX
+
+  return(sX)
+}
+
+.getBackground <- function(data,
+                          score,
+                          scores,
+                          cols=NULL,
+                          block=NULL,
+                          nIterations=1000,
+                          posConst=FALSE,
+                          byBlock=TRUE,
+                          nBins=50,
+                          seed=42,
+                          nCores=1, ...){
+  set.seed(seed)
+  scoreFun <- get(score)
+
+  if(!byBlock)
+  {
+    subBlocks <- sample(unique(data[[block]]), nBins)
+    data <- subset(data, block %in% subBlocks)
+  }
+
+  bg <- mclapply(1:nIterations, function(i){
+    #data <- data[sample(nrow(data)),]
+
+    if(posConst)
+    {
+      # only shuffle on original non-NA positions
+      data[, c(cols) := lapply(.SD, shuffleByPos, pos), .SDcols=cols, by=block]
+    }
+    else{
+      data[, c(cols) := .SD[sample(.I, .N)], .SDcols=cols, by=block]}
+
+    bg <- scoreFun(data, cols=cols, block=block, nCores=1,
+                   getBg=FALSE, longFormat=FALSE, ...)
+    gc()
+    bg
+  }, mc.cores=nCores)
+
+  bg <- rbindlist(bg)
+
+  # TODO: Add min & max
+
+  # get percentiles of score vs background
+  #bg$type <- "bg"
+  #scores$type <- "obs"
+  #scoreCols <- paste(score, cellIds, sep=":")
+  # why this
+
+
+  bgm <- rbind(scores, bg, use.names=TRUE)
+  qts <- bgm[,lapply(.SD, frank, na.last="keep"),
+             .SDcols=cols, by=block]
+  qts <- melt(qts, id.vars=c(seqCol, "bin"),
+              value.name="rank")
+  qts[,(paste("percentile", score, sep=":")):=rank/nIterations]
+
+  # switch also observed scores to long
+  scores <- melt(scores, id.vars=block,
+                 value.name=paste(score, axis, sep=":"))
+
+  # if rows are ordered that could also just be a cbind
+  scores <- merge(scores, qts,
+                  by.x=c(block, "variable"),
+                  by.y=c(block, "variable"),
+                  all.x=TRUE)
   return(scores)
 }
