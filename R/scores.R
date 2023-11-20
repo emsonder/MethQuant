@@ -1,9 +1,6 @@
 #' Quantification functions
 #' @author Emanuel Sonder
 
-library(wCorr)
-library(fuzzyjoin)
-
 .getTemplates <- function(x, pos, m){
 
   cellTable <- data.table(rate=x, pos=pos)
