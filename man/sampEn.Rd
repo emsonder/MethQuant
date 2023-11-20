@@ -9,11 +9,15 @@ sampEn(
   cols = NULL,
   block = NULL,
   pos = NULL,
+  weighDist = FALSE,
   m = 2,
-  naMode = c("remove", "keep"),
+  naMode = c("keep", "remove"),
   r = NULL,
   measure = "maximum",
-  nCores = 1
+  nCores = 1,
+  getBg = FALSE,
+  longFormat = FALSE,
+  ...
 )
 }
 \arguments{

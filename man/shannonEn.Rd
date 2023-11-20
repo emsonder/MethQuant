@@ -10,7 +10,10 @@ shannonEn(
   block = NULL,
   normalize = TRUE,
   discretize = TRUE,
-  nCores = 1
+  nCores = 1,
+  getBg = FALSE,
+  longFormat = FALSE,
+  ...
 )
 }
 \arguments{

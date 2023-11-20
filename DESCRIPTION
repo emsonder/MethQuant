@@ -20,6 +20,8 @@ Imports: Rcpp (>= 1.0.7),
          data.table,
          bsseq,
          GenomicRanges
-Suggests: testthat
+Suggests: testthat,
+          wCorr,
+          fuzzyjoin
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.2.1
+RoxygenNote: 7.2.2

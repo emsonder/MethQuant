@@ -69,8 +69,8 @@ std::map<int, double> prob(NumericVector x, bool discretize){
 //' @param x Numeric vector
 //' @param y Numeric vector
 //' @return conditional entropy H(X|Y)
-//' @export
 //'
+//' @export
 // [[Rcpp::export]]
 double shannonEnDiscrete(NumericVector x, bool normalize, bool discretize){
   double entropy=0;
@@ -96,7 +96,7 @@ double shannonEnDiscrete(NumericVector x, bool normalize, bool discretize){
 
   if(normalize)
   {
-    entropy=entropy/probs.size();
+    entropy=entropy/log(probs.size());
   }
 
   return entropy;
@@ -111,8 +111,8 @@ double shannonEnDiscrete(NumericVector x, bool normalize, bool discretize){
 //' @param x Numeric vector
 //' @param y Numeric vector
 //' @return conditional entropy H(X|Y)
-//' @export
 //'
+//' @export
 // [[Rcpp::export]]
 double sampleEn(NumericVector x, int m, double r){
   int N = x.size();

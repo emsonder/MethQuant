@@ -8,14 +8,15 @@ Wrapper function to calculate different methylation scores.}
 methScores(
   data,
   score = c("sampEn", "shannonEn"),
-  axis = c("w", "h"),
+  axis = c("w", "h", "reads"),
   posCol = "pos",
   seqCol = "chr",
-  binMode = c("costum", "tiled", "fixed"),
+  binMode = c("custom", "tiled", "fixed"),
   regions = NULL,
   startCol = "start",
   endCol = "end",
   binSize = 1000,
+  getBg = FALSE,
   ...
 )
 }

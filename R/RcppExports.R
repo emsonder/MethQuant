@@ -10,8 +10,8 @@
 #' @param x Numeric vector
 #' @param y Numeric vector
 #' @return conditional entropy H(X|Y)
-#' @export
 #'
+#' @export
 shannonEnDiscrete <- function(x, normalize, discretize) {
     .Call('_MethQuant_shannonEnDiscrete', PACKAGE = 'MethQuant', x, normalize, discretize)
 }
@@ -25,8 +25,8 @@ shannonEnDiscrete <- function(x, normalize, discretize) {
 #' @param x Numeric vector
 #' @param y Numeric vector
 #' @return conditional entropy H(X|Y)
-#' @export
 #'
+#' @export
 sampleEn <- function(x, m, r) {
     .Call('_MethQuant_sampleEn', PACKAGE = 'MethQuant', x, m, r)
 }

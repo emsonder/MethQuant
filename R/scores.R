@@ -256,11 +256,14 @@ sampEn <- function(data,
   return(scores)
 }
 
+#' @export
 metLevel <- function(data,
                      cols=NULL,
                      block=NULL,
                      pos=NULL,
-                     nCores=1){
+                     nCores=1,
+                     longFormat=FALSE,
+                     getBg=FALSE, ...){
 
   if(!is.null(block))
   {
@@ -273,7 +276,18 @@ metLevel <- function(data,
                               mc.cores=nCores), .SDcols=cols]
   }
 
-  setnames(scores, cols, paste("metLevel", cols, sep="_"))
+  if(getBg)
+  {
+    longFormat <- TRUE
+  }
+
+  if(longFormat)
+  {
+    # switch to long
+    scores <- melt(scores, id.vars=block,
+                   value.name="metLevel")
+    setorderv(scores, cols=block)
+  }
 
   return(scores)
 }
@@ -304,14 +318,14 @@ shannonEn <- function(data, cols=NULL, block=NULL, normalize=TRUE,
   if(is.null(cols)) cols <- setdiff(colnames(data), block)
 
   if(!is.null(block)){
-    scores <- data[,mclapply(.SD, function(x){shannonEnDiscrete(na.omit(x),
+    scores <- data[,mclapply(.SD, function(x){shannonEnDiscrete(x[!is.na(x)],
                                                                 normalize,
                                                                 discretize)},
                            mc.cores=nCores),
                     by=c(block), .SDcols=cols]
     }
   else{
-    scores <- data[,mclapply(.SD, function(x){shannonEnDiscrete(na.omit(x),
+    scores <- data[,mclapply(.SD, function(x){shannonEnDiscrete(x[!is.na(x)],
                                                                 normalize,
                                                                 discretize)},
                            mc.cores=nCores),
@@ -344,8 +358,7 @@ shannonEn <- function(data, cols=NULL, block=NULL, normalize=TRUE,
                          maxDist=1000,
                          shift=1,
                          minDist=NULL,
-                         isDist=FALSE,
-                         ...){
+                         isDist=FALSE, ...){
 
   decay <- match.arg(decay, choices=c("exp", "linear"))
 
@@ -389,32 +402,15 @@ ent <- function(p, norm, ...){
   return(etr)
 }
 
-estTr <- function(x, aggFun=sum, norm=TRUE, ...){
-
-  if(any(!is.na(x)))
-  {
-    x <- as.character(x)
-    fit <- markovchainFit(x, method="mle")
-    trm <- fit$estimate@transitionMatrix
-    score <- aggFun(apply(trm, 1, ent, norm, ...), na.rm=TRUE)
-  }
-  else
-  {
-    score <- as.numeric(NA)
-  }
-
-  return(score)
-}
-
 .trProb <- function(x, pos,
                     weighDist=TRUE,
                     type=c("ctcm", "w"),
                     w=NULL,
                     aggFun=sum,
-                    norm=TRUE, ...){
+                    norm=TRUE){
 
   type <- match.arg(type, choices=c("ctcm", "w"))
-  x <- round(x)
+  x <- round(as.numeric(x))
 
   xs <- data.table::shift(x, type="lead", n=1)
   if(weighDist)
@@ -423,7 +419,8 @@ estTr <- function(x, aggFun=sum, norm=TRUE, ...){
     {
       dt <- data.table(x=x, xs=xs, w=w)
       dt <- dt[complete.cases(dt),]
-      tr <- dt[,.(p_t=sum(w)/sum(dt$w)),by=.(x,xs)]
+      tr <- dt[,.(w_t=sum(w)),by=.(x,xs)]
+      tr <- dt[,.(p_t=w_t/sum(w_t)),by=.(x)]
     }
     else
     {
@@ -441,7 +438,8 @@ estTr <- function(x, aggFun=sum, norm=TRUE, ...){
     dt <- data.table(x=x, xs=xs)
     dt <- dt[complete.cases(dt),]
 
-    tr <- dt[,.(p_t=.N/nrow(dt)), by=.(x,xs)]
+    tr <- dt[,.(n_t=.N), by=.(x,xs)]
+    tr[,p_t:=n_t/sum(n_t), by=x]
   }
 
   tr <- matrix(c(subset(tr, x==1 & xs==1)$p_t[1],
@@ -449,41 +447,45 @@ estTr <- function(x, aggFun=sum, norm=TRUE, ...){
                  subset(tr, x==1 & xs==0)$p_t[1],
                  subset(tr, x==0 & xs==0)$p_t[1]), nrow=2, ncol=2)
 
-  score <- aggFun(apply(tr, 1, ent, norm, ...), na.rm=TRUE)
+  score <- aggFun(apply(tr, 1, ent, norm), na.rm=TRUE)
   score
 }
 
+#' @export
 trProb <- function(data,
                    cols=NULL,
                    block=NULL,
                    weighDist=TRUE,
                    type=c("ctcm", "w"),
-                   decay=c("exp", "linear"),
                    nCores=1,
                    getBg=FALSE,
-                   longFormat=TRUE, ...){
+                   longFormat=TRUE,
+                   aggFun=sum,
+                   norm=TRUE, ...){
 
   if(is.null(cols)) cols <- setdiff(colnames(data), block)
-  decay <- match.arg(decay, choices=c("exp", "linear"))
 
   if(weighDist){
-    w <- .weightDecay(pos, decay=decay, shift=1, ...)}
-
-  pos <- data[["pos"]]
+    pos <- data[["pos"]]
+    w <- .weightDecay(pos, ...)}
 
   if(!is.null(block)){
-    scores <- data[,mclapply(.SD, function(x){.trProb(x, pos,
-                                                      weighDist=TRUE,
+    scores <- data[,mclapply(.SD, function(x){.trProb(x,
+                                                      pos,
+                                                      weighDist=weighDist,
                                                       type=type,
-                                                      w=w, ...)},
+                                                      w=w,
+                                                      aggFun=aggFun)},
                              mc.cores=nCores),
                    by=c(block), .SDcols=cols]
   }
   else{
-    scores <- data[,mclapply(.SD, function(x){.trProb(x, pos,
-                                                      weighDist=TRUE,
+    scores <- data[,mclapply(.SD, function(x){.trProb(x,
+                                                      pos,
+                                                      weighDist=weighDist,
                                                       type=type,
-                                                      w=w , ...)},
+                                                      w=w,
+                                                      aggFun=aggFun)},
                              mc.cores=nCores),
                    .SDcols=cols]
   }
@@ -511,29 +513,28 @@ trProb <- function(data,
 }
 
 # weighted correlation for bulk data
+#' @export
 corr <-  function(data,
                   cols=NULL,
                   block=NULL,
                   weighDist=TRUE,
-                  decay="exp",
-                  shift=1,
                   nCores=1,
+                  shift=1,
                   getBg=FALSE,
                   longFormat=FALSE, ...){
-  decay <- match.arg(decay, choices=c("exp", "linear"))
 
   if(weighDist){
     pos <- data[["pos"]]
-    w <- .weightDecay(pos, decay=decay, shift=shift, ...)}
+    w <- .weightDecay(pos, ...)}
 
   if(!is.null(block)){
     scores <- data[,mclapply(.SD,function(x,w){
       xs <- data.table::shift(x, type="lead", n=shift)
       if(weighDist)
       {
-        dt <- data.table(x=x, xs=xs)
+        dt <- data.table(x=x, xs=xs, w=w)
         dt <- dt[complete.cases(dt),]
-        s <- weightedCorr(dt$x, dt$xs, weights=w, method="Pearson")
+        s <- weightedCorr(dt$x, dt$xs, weights=dt$w, method="Pearson")
       }
       else
       {
@@ -596,13 +597,11 @@ corr <-  function(data,
   }
 }
 
-# for getting the background keep the score constant
-# weight should be an argument
+#' @export
 smc <- function(data,
                 cols=NULL,
                 block=NULL,
                 weighDist=TRUE,
-                decay="exp",
                 shift=1,
                 nCores=1,
                 getBg=FALSE,
@@ -610,7 +609,7 @@ smc <- function(data,
 
       if(weighDist){
         pos <- data[["pos"]]
-        w <- .weightDecay(pos, decay=decay, shift=shift, ...)}
+        w <- .weightDecay(pos, ...)}
 
       if(!is.null(block)){
       scores <- data[,mclapply(.SD,function(x,w){
@@ -679,7 +678,7 @@ shuffleByPos <- function(x, pos){
                           cols=NULL,
                           block=NULL,
                           nIterations=1000,
-                          posConst=FALSE,
+                          posConst=TRUE,
                           byBlock=TRUE,
                           nBins=50,
                           seed=42,
@@ -693,7 +692,7 @@ shuffleByPos <- function(x, pos){
     data <- subset(data, block %in% subBlocks)
   }
 
-  bg <- mclapply(1:nIterations, function(i){
+  bg <- mclapply(1:nIterations, function(i, ...){
     #data <- data[sample(nrow(data)),]
 
     if(posConst)
@@ -708,7 +707,7 @@ shuffleByPos <- function(x, pos){
                    getBg=FALSE, longFormat=FALSE, ...)
     gc()
     bg
-  }, mc.cores=nCores)
+  }, ..., mc.cores=nCores)
 
   bg <- rbindlist(bg)
 
@@ -721,10 +720,9 @@ shuffleByPos <- function(x, pos){
   qts <- bgm[,(cols):=lapply(.SD, frank, na.last="keep"), .SDcols=cols, by=block]
   qts <- subset(qts, type=="obs")
   qts$type <- NULL
-  qts <- melt(qts,
-              id.vars=block,
-              value.name="rank")
-  qts[,(paste("percentile", score, sep="_")):=rank/nIterations]
+  scores$type <- NULL
+  qts <- melt(qts, id.vars=block, value.name="rank")
+  qts[,(paste("percentile", score, sep="_")):=rank/(nIterations+1)]
 
   # switch also observed scores to long
   scores <- melt(scores, id.vars=block,

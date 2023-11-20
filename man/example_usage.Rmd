@@ -1,0 +1,131 @@
+---
+title: "Example_usage"
+output: html_document
+date: '2023-11-20'
+---
+
+```{r setup}
+# devtools::install()
+library(MethQuant)
+library(GenomicRanges)
+```
+
+Overview of the scores
+```{r}
+s1 <- getScores(level="sc", axis="w")
+s1
+```
+
+
+# Single Cell 
+
+dummy single cell data
+```{r, dummy single-cell data}
+md <- replicate(100, sample(c(0,1,NA), 1e4, replace=TRUE))
+md <- as.data.table(md)
+md$chr <- "1"
+pos <- sample(1:1e6, 1e4)
+pos <- pos[order(pos)]
+md$pos <- pos
+regions <- GenomicRanges::GRanges(seqnames=c("1"), ranges=IRanges(start=1, end=1e6))
+```
+
+Get plain score. All the score parameters go into the ... arguments (cdot). See getScores() for an overview of the parameters of the respective score
+```{r, sc: plain score}
+s <- methScores(md, score="trProb", axis="w", posCol="pos", seqCol="chr", 
+                binMode=c("custom"), regions=regions,
+                weighDist=FALSE)
+head(s, 5)
+```
+
+Get score weighted by distance of CpGs
+```{r, sc: weighted by distance}
+s <- methScores(md, score="trProb", axis="w", posCol="pos", seqCol="chr", 
+                binMode=c("custom"), regions=regions,
+                weighDist=TRUE, decay="linear", maxDist=500)
+head(s, 5)
+```
+
+Get score weighted by distance of CpGs & percentile within background distribution
+```{r, sc: weighted by distance plus background}
+s <- methScores(md, score="trProb", axis="w", posCol="pos", seqCol="chr", 
+                binMode=c("custom"), regions=regions,
+                weighDist=TRUE, decay="linear", maxDist=500, getBg=TRUE, 
+                nIterations=2)
+head(s, 5)
+```
+Calculate multiple scores and their percentiles
+```{r, sc: several scores}
+s <- methScores(md, score=c("trProb", "smc", "metLevel"), axis="w", posCol="pos", seqCol="chr", 
+                binMode=c("custom"), regions=regions,
+                weighDist=TRUE, decay="linear", maxDist=500, getBg=TRUE, 
+                nIterations=2)
+head(s, 5)
+```
+
+On height axis:
+```{r, sc:height}
+s <- methScores(md, score=c("metLevel", "shannonEn"), axis="h", posCol="pos", seqCol="chr", 
+                binMode=c("custom"), regions=regions)
+head(s, 5)
+```
+
+# Bulk 
+
+```{r, dummy bulk data}
+md <- replicate(100, runif(1e4))
+md <- as.data.table(md)
+md$chr <- "1"
+pos <- sample(1:1e6, 1e4)
+pos <- pos[order(pos)]
+md$pos <- pos
+regions <- GenomicRanges::GRanges(seqnames=c("1"), ranges=IRanges(start=1, end=1e6))
+```
+
+plain score
+```{r, bulk: single score}
+s <- methScores(md, score="sampEn", axis="w", posCol="pos", seqCol="chr", 
+                binMode=c("custom"), regions=regions,
+                weighDist=FALSE, naMode="keep", r=0.5, measure="euclidean")
+head(s, 5)
+```
+change parametrization
+```{r, bulk: single score, with different parameters}
+s <- methScores(md, score="sampEn", axis="w", posCol="pos", seqCol="chr", 
+                binMode=c("custom"), regions=regions,
+                weighDist=FALSE, naMode="keep", r=2, measure="euclidean")
+head(s, 5)
+```
+
+weighted by distance (slow for sampEn, especially in the bulk case+weighted, not recommended to run with backgrounds)
+```{r, bulk: distance weighted score}
+s <- methScores(md, score="corr", axis="w", posCol="pos", seqCol="chr", 
+                binMode=c("custom"), regions=regions,
+                weighDist=TRUE)
+head(s, 5)
+```
+
+with background 
+```{r, bulk: distance weighted score with background}
+s <- methScores(md, score="corr", axis="w", posCol="pos", seqCol="chr", 
+                binMode=c("custom"), regions=regions,
+                weighDist=TRUE, 
+                getBg=TRUE, nIterations=2)
+head(s, 5)
+```
+
+several scores
+```{r, bulk: several scores}
+s <- methScores(md, score=c("sampEn", "corr", "metLevel"), axis="w", posCol="pos", seqCol="chr", 
+                binMode=c("custom"), regions=regions,
+                weighDist=FALSE, naMode="keep", r=0.5, measure="euclidean")
+head(s, 5)
+```
+
+height axis
+```{r}
+s <- methScores(md, score=c("metLevel", "shannonEn"), 
+                axis="h", posCol="pos", seqCol="chr", 
+                binMode=c("custom"), regions=regions)
+head(s, 5)
+```

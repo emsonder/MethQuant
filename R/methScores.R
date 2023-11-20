@@ -1,5 +1,6 @@
 # Wrapper function for quantifying methylation patterns
 #'@author: Emanuel Sonder
+#'
 
 #' @title methScores
 #' Wrapper function to calculate different methylation scores.
@@ -42,11 +43,12 @@ methScores <- function(data, # can be GRanges, or bsseq, or data.table / data.fr
                        startCol="start",
                        endCol="end",
                        binSize=1000,
+                       getBg=FALSE,
                        ...){
 
     # check input arguments
     score <- match.arg(score,
-                       choices=c("sampEn", "shannonEn", "metLevel", "pdr", "fdrp", "trProb", "smc"), # add constants file
+                       choices=c("sampEn", "shannonEn", "metLevel", "pdr", "fdrp", "trProb", "smc", "corr"), # add constants file
                        several.ok=TRUE)
 
     # Retrieve the methylation matrix
@@ -146,7 +148,7 @@ methScores <- function(data, # can be GRanges, or bsseq, or data.table / data.fr
                           longFormat=FALSE, ...)
             setnames(s, "met_level", score)
             s
-          })
+          }, ...)
         scores <- setDT(unlist(allScores, recursive = FALSE),
                         check.names =FALSE)[]
         scores <- scores[, .SD, .SDcols = unique(names(scores))]
@@ -156,8 +158,10 @@ methScores <- function(data, # can be GRanges, or bsseq, or data.table / data.fr
         allScores <- lapply(score, function(score, ...){
           scoreFun <- get(score)
           s <- scoreFun(methData, cols=cellIds,
-                        block=c(seqCol, "bin"), longFormat=TRUE, ...)
-          s})
+                        block=c(seqCol, "bin"),
+                        getBg=getBg,
+                        longFormat=TRUE, ...)
+          s},...)
         scores <- setDT(
           unlist(allScores, recursive = FALSE),
           check.names =FALSE)[]
@@ -235,4 +239,26 @@ methScoresReads <- function(data, score, regions, seed=43, ...){
   scores <- scoreFun(data, regions, ...)
 
   return(scores)
+}
+
+#' @export
+getScores <- function(level=c("sc", "bulk"), axis=c("w", "h")){
+
+  levelArg <- match.arg(level, choices=c("sc", "bulk"))
+  axisArg <- match.arg(axis, choices=c("w", "h"))
+
+  scores <- data.table(name=c("trProb", "sampEn", "smc",
+                              "metLevel", "shannonEn", "corr"),
+                       axis=c("w", "w", "w", "both", "both", "w"),
+                       level=c("sc", "both", "sc", "both", "both", "bulk"),
+                       parameters=c("weighDist, type, aggFun",
+                                    "weighDist, m, naMode, r, measure",
+                                    "weighDist, shift",
+                                    "",
+                                    "normalize, discretize",
+                                    "weighDist, shift"))
+
+  scores <- subset(scores, level==levelArg | level=="both")
+  scores <- subset(scores, axis==axisArg | axis=="both")
+  scores
 }
