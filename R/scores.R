@@ -338,13 +338,6 @@ shannonEn <- function(data, cols=NULL, block=NULL, normalize=TRUE,
   return(scores)
 }
 
-data <- readRDS("/mnt/plger/esonder/R/MethQuant/analysis/scNMT_clark/mwDt.rds")
-cols <- setdiff(colnames(data), "start")
-setnames(data, "start", "pos")
-data$chr <- "1"
-data$bin <- "1"
-block <- c("chr", "bin")
-
 .weightDecay <- function(pos,
                          decay=c("exp", "linear"),
                          range=200,
