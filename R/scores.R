@@ -1,6 +1,9 @@
 #' Quantification functions
 #' @author Emanuel Sonder
 
+library(wCorr)
+library(fuzzyjoin)
+
 .getTemplates <- function(x, pos, m){
 
   cellTable <- data.table(rate=x, pos=pos)
@@ -24,7 +27,7 @@
   return(templates)
 }
 
-.findPairs <- function(templates, r, measure="maximum")
+.findPairs <- function(templates, r, measure="maximum", weighDist=FALSE)
 {
   # Count templates of length m in proximity r
   tempCounts <- as.data.table(table(templates))
@@ -60,20 +63,87 @@
   return(matchCount)
 }
 
-.keepSampEn <- function(x, pos, m,
-                        r=NULL, measure="maximum"){
+# thats much slower
+.findWeightedPairs <- function(templates, r=NULL, measure){
+
+  templates[,id:=1:nrow(templates)]
+
+  if(is.null(r))
+  {
+    matchM <- merge(templates, templates,
+                    by.x="tempM", by.y="tempM",
+                    allow.cartesian=TRUE) # slow
+    matchM <- subset(matchM, id.x!=id.y) # exlcude self-matches
+    B <- sum(matchM$w.x*matchM$w.y)
+    matchMP <- merge(templates, templates,
+                     by.x="tempMP", by.y="tempMP",
+                     allow.cartesian=TRUE) # slow
+    matchMP <- subset(matchMP, id.x!=id.y) # exclude self-matches
+    A <- sum(matchMP$w.x*matchMP$w.y)
+  }
+  else
+  {
+    measure <- match.arg(measure, choices=c("euclidean", "manhattan"))
+    # get distance between m pairs
+    matchM <- fuzzyjoin::distance_full_join(templates,
+                                            templates,
+                                            by=c("0", "1"),
+                                            method=measure)
+    matchM <- subset(matchM, id.x!=id.y)
+    B <- sum(matchM$w.y*matchM$w.x)
+
+    # get distance between m+1 pairs
+    matchMP <- fuzzyjoin::distance_full_join(templates,
+                                             templates,
+                                             by=c("0", "1", "2"))
+    matchMP <- subset(matchMP, id.x!=id.y)
+    A <- sum(matchMP$w.y*matchMP$w.x)
+  }
+
+  return(list(A=A, B=B))
+}
+
+.keepSampEn <- function(x,
+                        pos,
+                        m,
+                        r=NULL,
+                        measure="euclidean",
+                        weighDist=FALSE, ...){
   templates <- .getTemplates(x, pos, m)
 
+  if(weighDist)
+  {
+    templates[,dist:=temp_end-temp_start]
+    templates[,w:=.weightDecay(dist, isDist=TRUE, ...)]
+  }
+
   if(is.null(r)){
-    B <- sum(choose(table(templates$tempM), 2))
-    A <- sum(choose(table(templates$tempMP), 2))
+    if(weighDist)
+    {
+      matches <- .findWeightedPairs(templates, r=r, measure=measure)
+      B <- matches$B
+      A <- matches$A
+    }
+    else
+    {
+      B <- sum(choose(table(templates$tempM), 2))
+      A <- sum(choose(table(templates$tempMP), 2))
+    }
   }
   else{
     if(r=="sd") r <- 0.2*sd(x, na.rm=TRUE)
 
-    # check should give the same as above in the binary case, with r=1 & chebyshev
-    B <- .findPairs(templates$tempM, r, measure)
-    A <- .findPairs(templates$tempMP, r, measure)
+    if(weighDist)
+    {
+      matches <- .findWeightedPairs(templates, r=r, measure=measure)
+      B <- matches$B
+      A <- matches$A
+    }
+    else{
+      # check should give the same as above in the binary case, with r=1 & chebyshev
+      B <- .findPairs(templates$tempM, r, measure)
+      A <- .findPairs(templates$tempMP, r, measure)
+    }
   }
 
   # Sample Entropy
@@ -118,15 +188,15 @@ sampEn <- function(data,
                    cols=NULL,
                    block=NULL,
                    pos=NULL,
+                   weighDist=FALSE,
                    m=2,
                    naMode=c("keep", "remove"),
                    r=NULL,
                    measure="maximum",
-                   nCores=1,
-                   getBg=FALSE,
-                   longFormat=FALSE){
+                   nCores=1, getBg=FALSE, longFormat=FALSE, ...){
 
   data <- as.data.table(data)
+  naMode <- match.arg(naMode, choices=c("keep", "remove"))
 
   # ensure ordering
   if(is.null(pos)) pos <- 1:nrow(data)
@@ -141,7 +211,7 @@ sampEn <- function(data,
   if(!is.null(block)){
     if(naMode=="keep"){
       scores <- data[, mclapply(.SD, .keepSampEn, pos, m, r,
-                                measure, mc.cores=nCores),
+                                measure, weighDist, ..., mc.cores=nCores),
                        by=block, .SDcols=cols] # Reduce(c,
     }
     else if(naMode=="remove")
@@ -179,7 +249,7 @@ sampEn <- function(data,
   {
     # switch to long
     scores <- melt(scores, id.vars=block,
-                   value.name=paste("sampEn", axis, sep=":"))
+                   value.name="sampEn")
     setorderv(scores, cols=block)
   }
 
@@ -190,8 +260,6 @@ metLevel <- function(data,
                      cols=NULL,
                      block=NULL,
                      pos=NULL,
-                     getBg=FALSE,
-                     longFormat=FALSE,
                      nCores=1){
 
   if(!is.null(block))
@@ -205,22 +273,7 @@ metLevel <- function(data,
                               mc.cores=nCores), .SDcols=cols]
   }
 
-  if(getBg)
-  {
-    scores <- .getBackground(data, "metLevel",
-                             scores,
-                             cols=cols,
-                             block=block,
-                             nCores=nCores,
-                             ...)
-  }
-  else if(longFormat & !getBg)
-  {
-    # switch to long
-    scores <- melt(scores, id.vars=block,
-                   value.name=paste("metLevel", axis, sep=":"))
-    setorderv(scores, cols=block)
-  }
+  setnames(scores, cols, paste("metLevel", cols, sep="_"))
 
   return(scores)
 }
@@ -278,11 +331,57 @@ shannonEn <- function(data, cols=NULL, block=NULL, normalize=TRUE,
   {
     # switch to long
     scores <- melt(scores, id.vars=block,
-                   value.name=paste("shannonEn", axis, sep=":"))
+                   value.name="shannonEn")
     setorderv(scores, cols=block)
   }
 
   return(scores)
+}
+
+data <- readRDS("/mnt/plger/esonder/R/MethQuant/analysis/scNMT_clark/mwDt.rds")
+cols <- setdiff(colnames(data), "start")
+setnames(data, "start", "pos")
+data$chr <- "1"
+data$bin <- "1"
+block <- c("chr", "bin")
+
+.weightDecay <- function(pos,
+                         decay=c("exp", "linear"),
+                         range=200,
+                         maxDist=1000,
+                         shift=1,
+                         minDist=NULL,
+                         isDist=FALSE,
+                         ...){
+
+  decay <- match.arg(decay, choices=c("exp", "linear"))
+
+  if(!isDist)
+  {
+    d <- data.table::shift(pos, type="lead", n=shift)-pos
+  }
+  else
+  {
+    d <- pos
+  }
+
+  if(decay=="exp")
+  {
+    w <- exp(-d/range)
+  }
+  else if(decay=="linear")
+  {
+    w <- (1-d/maxDist)
+  }
+
+  w[w<0] <-0
+
+  if(!is.null(minDist))
+  {
+    w[d<minDist] <- 0
+  }
+
+  return(w)
 }
 
 ent <- function(p, norm, ...){
@@ -314,18 +413,84 @@ estTr <- function(x, aggFun=sum, norm=TRUE, ...){
   return(score)
 }
 
-trProb <- function(data, cols=NULL, block=NULL, nCores=1,
-                   getBg=TRUE, longFormat=TRUE, ...){
+.trProb <- function(x, pos,
+                    weighDist=TRUE,
+                    type=c("ctcm", "w"),
+                    w=NULL,
+                    aggFun=sum,
+                    norm=TRUE, ...){
+
+  type <- match.arg(type, choices=c("ctcm", "w"))
+  x <- round(x)
+
+  xs <- data.table::shift(x, type="lead", n=1)
+  if(weighDist)
+  {
+    if(type=="w")
+    {
+      dt <- data.table(x=x, xs=xs, w=w)
+      dt <- dt[complete.cases(dt),]
+      tr <- dt[,.(p_t=sum(w)/sum(dt$w)),by=.(x,xs)]
+    }
+    else
+    {
+      d <- data.table::shift(pos, type="lead", n=1)-pos
+      dt <- data.table(x=x, xs=xs, dist=d)
+      dt <- dt[complete.cases(dt),]
+
+      tr <- dt[,.(r_t=.N/sum(dist)),by=.(x,xs)]
+      tr[,r_tot:=sum(r_t), by=x]
+      tr[,p_t:=r_t/r_tot]
+    }
+  }
+  else
+  {
+    dt <- data.table(x=x, xs=xs)
+    dt <- dt[complete.cases(dt),]
+
+    tr <- dt[,.(p_t=.N/nrow(dt)), by=.(x,xs)]
+  }
+
+  tr <- matrix(c(subset(tr, x==1 & xs==1)$p_t[1],
+                 subset(tr, x==0 & xs==1)$p_t[1],
+                 subset(tr, x==1 & xs==0)$p_t[1],
+                 subset(tr, x==0 & xs==0)$p_t[1]), nrow=2, ncol=2)
+
+  score <- aggFun(apply(tr, 1, ent, norm, ...), na.rm=TRUE)
+  score
+}
+
+trProb <- function(data,
+                   cols=NULL,
+                   block=NULL,
+                   weighDist=TRUE,
+                   type=c("ctcm", "w"),
+                   decay=c("exp", "linear"),
+                   nCores=1,
+                   getBg=FALSE,
+                   longFormat=TRUE, ...){
 
   if(is.null(cols)) cols <- setdiff(colnames(data), block)
+  decay <- match.arg(decay, choices=c("exp", "linear"))
+
+  if(weighDist){
+    w <- .weightDecay(pos, decay=decay, shift=1, ...)}
+
+  pos <- data[["pos"]]
 
   if(!is.null(block)){
-    scores <- data[,mclapply(.SD, function(x){estTr(x, ...)},
+    scores <- data[,mclapply(.SD, function(x){.trProb(x, pos,
+                                                      weighDist=TRUE,
+                                                      type=type,
+                                                      w=w, ...)},
                              mc.cores=nCores),
                    by=c(block), .SDcols=cols]
   }
   else{
-    scores <- data[,mclapply(.SD, function(x){estTr(x, ...)},
+    scores <- data[,mclapply(.SD, function(x){.trProb(x, pos,
+                                                      weighDist=TRUE,
+                                                      type=type,
+                                                      w=w , ...)},
                              mc.cores=nCores),
                    .SDcols=cols]
   }
@@ -345,83 +510,142 @@ trProb <- function(data, cols=NULL, block=NULL, nCores=1,
   {
     # switch to long
     scores <- melt(scores, id.vars=block,
-                   value.name=paste("trProb", axis, sep=":"))
+                   value.name="trProb")
     setorderv(scores, cols=block)
   }
 
   return(scores)
 }
 
-.weightDecay <- function(pos,
-                         decay=c("exp", "linear"),
-                         range=200,
-                         maxDist=1000,
-                         shift=1,
-                         minDist=NULL, ...){
-
+# weighted correlation for bulk data
+corr <-  function(data,
+                  cols=NULL,
+                  block=NULL,
+                  weighDist=TRUE,
+                  decay="exp",
+                  shift=1,
+                  nCores=1,
+                  getBg=FALSE,
+                  longFormat=FALSE, ...){
   decay <- match.arg(decay, choices=c("exp", "linear"))
-  d <- data.table::shift(pos, type="lead", n=shift)-pos
 
-  if(decay=="exp")
+  if(weighDist){
+    pos <- data[["pos"]]
+    w <- .weightDecay(pos, decay=decay, shift=shift, ...)}
+
+  if(!is.null(block)){
+    scores <- data[,mclapply(.SD,function(x,w){
+      xs <- data.table::shift(x, type="lead", n=shift)
+      if(weighDist)
+      {
+        dt <- data.table(x=x, xs=xs)
+        dt <- dt[complete.cases(dt),]
+        s <- weightedCorr(dt$x, dt$xs, weights=w, method="Pearson")
+      }
+      else
+      {
+        dt <- data.table(x=x, xs=xs)
+        dt <- dt[complete.cases(dt),]
+        s <- weightedCorr(dt$x, dt$xs, method="Pearson")
+      }
+      s}, w, mc.cores=nCores), by=c(block), .SDcols=cols]}
+  else
   {
-      w <- exp(-d/range)
+    scores <- data[,mclapply(.SD, function(x,w){
+      xs <- data.table::shift(x, type="lead", n=shift)
+      if(weighDist)
+      {
+        dt <- data.table(x=x, xs=xs)
+        dt <- dt[complete.cases(dt),]
+        s <- weightedCorr(dt$x, dt$xs, weights=w)
+      }
+      else
+      {
+        dt <- data.table(x=x, xs=xs)
+        dt <- dt[complete.cases(dt),]
+        s <- weightedCorr(dt$x, dt$xs)
+      }
+      s}, w, mc.cores=nCores), .SDcols=cols]
   }
-  else if(decay=="linear")
+
+  if(getBg)
   {
-     w <- (1-d/maxDist)
+    scores <- .getBackground(data, "corr",
+                             scores,
+                             cols=cols,
+                             block=block,
+                             nCores=nCores,
+                             ...)
   }
-
-  w[w<0] <-0
-
-  if(!is.null(minDist))
+  else if(longFormat & !getBg)
   {
-    w[d<minDist] <- 0
+    # switch to long
+    scores <- melt(scores, id.vars=block,
+                   value.name="corr")
+    setorderv(scores, cols=block)
   }
 
-  return(w)
+  return(scores)
+}
+
+
+.smc <- function(x, xs, w=NULL){
+  if(is.null(w))
+  {
+    w <- rep(1, length(x))
+  }
+  if(sum(!is.na(x) & !is.na(xs))>10 & (sum(w>0, na.rm=TRUE)>10)){
+    s <- as.numeric(sum(w*as.numeric(x==xs), na.rm=TRUE)/sum(w, na.rm=TRUE))
+  }
+  else
+  {
+    s <- NA
+  }
 }
 
 # for getting the background keep the score constant
+# weight should be an argument
 smc <- function(data,
                 cols=NULL,
                 block=NULL,
+                weighDist=TRUE,
                 decay="exp",
                 shift=1,
                 nCores=1,
                 getBg=FALSE,
                 longFormat=FALSE, ...){
 
-      pos <- data[["pos"]]
-      w <- .weightDecay(pos, decay=decay, shift=shift, ...)
+      if(weighDist){
+        pos <- data[["pos"]]
+        w <- .weightDecay(pos, decay=decay, shift=shift, ...)}
 
       if(!is.null(block)){
       scores <- data[,mclapply(.SD,function(x,w){
-           xs <- data.table::shift(x, type="lead", n=shift)
-           wo <- w
-           wo[is.na(x) | is.na(xs)] <- NA
-
-           if(sum(!is.na(x) & !is.na(xs))>10 & (sum(wo>0, na.rm=TRUE)>10)){
-             s <- as.numeric(sum(wo*as.numeric(x==xs), na.rm=TRUE)/sum(wo, na.rm=TRUE))
-           }
-           else
-           {
-             s <- NA
-           }
-
-           s}, w, mc.cores=nCores), by=c(block), .SDcols=cols]}
+          xs <- data.table::shift(x, type="lead", n=shift)
+          if(weighDist)
+          {
+            wo <- w
+            wo[is.na(x) | is.na(xs)] <- NA
+            s <- .smc(x, xs, wo)
+          }
+          else
+          {
+            s <- .smc(x, xs)
+          }
+          s}, w, mc.cores=nCores), by=c(block), .SDcols=cols]}
       else
       {
         scores <- data[,mclapply(.SD, function(x,w){
           xs <- data.table::shift(x, type="lead", n=shift)
-          wo <- w
-          wo[is.na(x) | is.na(xs)] <- NA
-
-          if(sum(!is.na(x) & !is.na(xs))>10 & (sum(wo>0, na.rm=TRUE)>10)){
-            s <- as.numeric(sum(wo*as.numeric(x==xs), na.rm=TRUE)/sum(wo, na.rm=TRUE))
+          if(weighDist)
+          {
+            wo <- w
+            wo[is.na(x) | is.na(xs)] <- NA
+            s <- .smc(x, xs, wo)
           }
           else
           {
-            s <- NA
+            s <- .smc(x, xs)
           }
           s}, w, mc.cores=nCores), .SDcols=cols]
       }
@@ -439,7 +663,7 @@ smc <- function(data,
       {
         # switch to long
         scores <- melt(scores, id.vars=block,
-                       value.name=paste("smc", axis, sep=":"))
+                       value.name="smc")
         setorderv(scores, cols=block)
       }
 
@@ -496,24 +720,22 @@ shuffleByPos <- function(x, pos){
   bg <- rbindlist(bg)
 
   # TODO: Add min & max
-
   # get percentiles of score vs background
-  #bg$type <- "bg"
-  #scores$type <- "obs"
-  #scoreCols <- paste(score, cellIds, sep=":")
-  # why this
-
+  bg$type <- "bg"
+  scores$type <- "obs"
 
   bgm <- rbind(scores, bg, use.names=TRUE)
-  qts <- bgm[,lapply(.SD, frank, na.last="keep"),
-             .SDcols=cols, by=block]
-  qts <- melt(qts, id.vars=c(seqCol, "bin"),
+  qts <- bgm[,(cols):=lapply(.SD, frank, na.last="keep"), .SDcols=cols, by=block]
+  qts <- subset(qts, type=="obs")
+  qts$type <- NULL
+  qts <- melt(qts,
+              id.vars=block,
               value.name="rank")
-  qts[,(paste("percentile", score, sep=":")):=rank/nIterations]
+  qts[,(paste("percentile", score, sep="_")):=rank/nIterations]
 
   # switch also observed scores to long
   scores <- melt(scores, id.vars=block,
-                 value.name=paste(score, axis, sep=":"))
+                 value.name=score)
 
   # if rows are ordered that could also just be a cbind
   scores <- merge(scores, qts,
@@ -522,3 +744,4 @@ shuffleByPos <- function(x, pos){
                   all.x=TRUE)
   return(scores)
 }
+
