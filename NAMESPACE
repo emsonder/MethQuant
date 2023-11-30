@@ -13,3 +13,7 @@ export(shannonEnDiscrete)
 export(smc)
 export(tileBinning)
 export(trProb)
+
+useDynLib(MethQuant, .registration=TRUE)
+importFrom(Rcpp, evalCpp)
+exportPattern("^[[:alpha:]]+")
